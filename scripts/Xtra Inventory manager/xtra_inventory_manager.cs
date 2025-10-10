@@ -1,15 +1,20 @@
-// === [YIM Hydrogen Monitor v3] ===
-// Affiche le niveau global des tanks [QG] sur LCD [YIM-Main]
-// Barre de progression bleue dynamique
-// Optimisé pour serveurs (rafraîchissement 10 s)
+// === [YIM Base Status v9] ===
+// Adds Cargo Containers tracking to [QG] status overview
+// Compact layout + ASCII spinner feedback
 
-const string tagTank = "[QG]";
-const string tagLCD = "[YIM-Main]";
-const double refreshSeconds = 10;
+const string TAG = "[QG]";
+const string LCD_NAME = "[QG] LCD [YIM-Main]";
+const double REFRESH_SECONDS = 10;
 
 IMyTextPanel lcd;
-List<IMyGasTank> tanks = new List<IMyGasTank>();
+List<IMyGasTank> h2Tanks = new List<IMyGasTank>();
+List<IMyGasTank> o2Tanks = new List<IMyGasTank>();
+List<IMyBatteryBlock> batteries = new List<IMyBatteryBlock>();
+List<IMyCargoContainer> cargos = new List<IMyCargoContainer>();
+
 double timer = 0;
+int frame = 0;
+char[] spinner = new char[] { '|', '/', '-', '\\' };
 
 public Program() {
     Runtime.UpdateFrequency = UpdateFrequency.Update100; // ~1.6 s
@@ -17,61 +22,105 @@ public Program() {
 }
 
 void RefreshBlocks() {
-    tanks.Clear();
-    GridTerminalSystem.GetBlocksOfType(tanks, t => t.CustomName.Contains(tagTank));
-    lcd = GridTerminalSystem.GetBlockWithName(tagLCD) as IMyTextPanel;
+    h2Tanks.Clear();
+    o2Tanks.Clear();
+    batteries.Clear();
+    cargos.Clear();
+
+    GridTerminalSystem.GetBlocksOfType(h2Tanks, t =>
+        t.CustomName.Contains(TAG) && t.BlockDefinition.SubtypeName.Contains("Hydrogen"));
+    GridTerminalSystem.GetBlocksOfType(o2Tanks, t =>
+        t.CustomName.Contains(TAG) && t.BlockDefinition.SubtypeName.Contains("Oxygen"));
+    GridTerminalSystem.GetBlocksOfType(batteries, b =>
+        b.CustomName.Contains(TAG));
+    GridTerminalSystem.GetBlocksOfType(cargos, c =>
+        c.CustomName.Contains(TAG));
+
+    lcd = GridTerminalSystem.GetBlockWithName(LCD_NAME) as IMyTextPanel;
     if (lcd != null) {
         lcd.ContentType = ContentType.TEXT_AND_IMAGE;
         lcd.Font = "Monospace";
-        lcd.FontSize = 1.0f;
-        lcd.FontColor = new Color(0, 160, 255); // Bleu clair
-        lcd.BackgroundColor = new Color(0, 0, 10); // Fond sombre bleu
+        lcd.FontSize = 0.6f;
+        lcd.FontColor = Color.White;
+        lcd.BackgroundColor = Color.Black;
         lcd.Alignment = TextAlignment.LEFT;
-        lcd.WriteText("Initialisation...\n");
     }
 }
 
 void Main(string argument, UpdateType updateSource) {
     timer += Runtime.TimeSinceLastRun.TotalSeconds;
+    if (argument == "refresh") { RefreshBlocks(); timer = 0; }
 
-    if (argument == "refresh") {
-        RefreshBlocks();
-        lcd?.WriteText("Blocs rafraîchis\n", false);
-        timer = 0;
-    }
-
-    if (timer < refreshSeconds) return;
+    if (timer < REFRESH_SECONDS) return;
     timer = 0;
 
-    if (lcd == null || tanks.Count == 0) return;
+    if (lcd == null) return;
 
-    double totalFilled = 0;
-    foreach (var t in tanks) totalFilled += t.FilledRatio;
-    double avgFill = totalFilled / tanks.Count;
+    frame = (frame + 1) % spinner.Length;
+    string spin = spinner[frame].ToString();
 
-    int barLength = (int)Math.Max(10, 40 * lcd.FontSize);
-    string bar = GetBlueBar(avgFill, barLength);
-
-    string output =
-        $"[Hydrogène - {tagTank}]\n\n" +
-        $"Tanks trouvés: {tanks.Count}\n" +
-        $"Remplissage global: {(avgFill * 100):0.0}%\n" +
-        $"{bar}\n\n";
-
-    foreach (var t in tanks)
-        output += $"{ShortenName(t.CustomName, 22)}: {(t.FilledRatio * 100):0.0}%\n";
+    string output = "Base " + TAG + " Status Overview  " + spin + "\n=====================\n";
+    output += BuildSection("Hydrogen", GetGasData(h2Tanks), "L");
+    output += BuildSection("Oxygen", GetGasData(o2Tanks), "L");
+    output += BuildSection("Batteries", GetBatteryData(), "MWh");
+    output += BuildSection("Containers", GetCargoData(), "L");
 
     lcd.WriteText(output, false);
 }
 
-string GetBlueBar(double ratio, int length) {
-    int filled = (int)(ratio * length);
-    string full = new string('█', filled);
-    string empty = new string('░', length - filled);
-    return $"[{full}{empty}]";
+string BuildSection(string name, double[] data, string unit) {
+    double ratio = data[0];
+    double cur = data[1];
+    double max = data[2];
+    int count = (int)data[3];
+
+    string bar = GetMiniBar(ratio, 15);
+    string line1 = string.Format("{0}\n", name);
+    string line2 = string.Format("- {0,5:0.0}% {1} / {2} {3}\n", ratio * 100, Format(cur), Format(max), unit);
+    string line3 = string.Format("- {0}\n", bar);
+    string line4 = string.Format("- {0} blocks\n\n", count);
+
+    return line1 + line2 + line3 + line4;
 }
 
-string ShortenName(string name, int max) {
-    if (name.Length <= max) return name;
-    return name.Substring(0, max - 3) + "...";
+string GetMiniBar(double ratio, int len) {
+    int filled = (int)(ratio * len);
+    return "[" + new string('|', filled) + new string('.', len - filled) + "]";
+}
+
+double[] GetGasData(List<IMyGasTank> tanks) {
+    double cur = 0, max = 0;
+    for (int i = 0; i < tanks.Count; i++) {
+        cur += tanks[i].FilledRatio * tanks[i].Capacity;
+        max += tanks[i].Capacity;
+    }
+    double ratio = max > 0 ? cur / max : 0;
+    return new double[] { ratio, cur, max, tanks.Count };
+}
+
+double[] GetBatteryData() {
+    double cur = 0, max = 0;
+    for (int i = 0; i < batteries.Count; i++) {
+        cur += batteries[i].CurrentStoredPower;
+        max += batteries[i].MaxStoredPower;
+    }
+    double ratio = max > 0 ? cur / max : 0;
+    return new double[] { ratio, cur, max, batteries.Count };
+}
+
+double[] GetCargoData() {
+    double cur = 0, max = 0;
+    for (int i = 0; i < cargos.Count; i++) {
+        var inv = cargos[i].GetInventory();
+        cur += (double)inv.CurrentVolume;
+        max += (double)inv.MaxVolume;
+    }
+    double ratio = max > 0 ? cur / max : 0;
+    return new double[] { ratio, cur, max, cargos.Count };
+}
+
+string Format(double val) {
+    if (val >= 1000000) return (val / 1000000).ToString("0.0M");
+    if (val >= 1000) return (val / 1000).ToString("0.0k");
+    return val.ToString("0.0");
 }

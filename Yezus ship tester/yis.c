@@ -1,5 +1,5 @@
-// === [YST Ship Load Overview v3.3 - Cockpit Reference, C#6 Compatible] ===
-// Calculates thrust directions relative to main cockpit (accurate even in 0g)
+// === [YST Ship Load Overview v3.4 - 75% Scenario, C#6 Compatible] ===
+// Accurate thrust & load ratios relative to cockpit, works even in 0g
 
 List<IMyThrust> thrusters = new List<IMyThrust>();
 List<IMyShipController> controllers = new List<IMyShipController>();
@@ -50,7 +50,6 @@ public void Main(string argument, UpdateType updateSource) {
 
     // === Directional thrust relative to cockpit ===
     double up = 0, down = 0, left = 0, right = 0, forward = 0, backward = 0;
-
     foreach (var t in thrusters) {
         double thrustKg = t.MaxEffectiveThrust * 0.1019716213;
         Vector3D thrDir = t.WorldMatrix.Forward;
@@ -91,13 +90,17 @@ public void Main(string argument, UpdateType updateSource) {
     lcd.WriteText("Left:" + Pad(Fm(left),8) + "  Right:" + Fm(right) + "\n\n", true);
 
     lcd.WriteText("=== Est. Load Ratios ===\n", true);
-    lcd.WriteText("Scenario | Axis | 25% | 50% |100%|\n", true);
-    lcd.WriteText("Comp | Up | " + Est(compMass,0.25,shipMass,up) + " | " + Est(compMass,0.5,shipMass,up) + " | " + Est(compMass,1.0,shipMass,up) + " |\n", true);
-    lcd.WriteText("      | Fw | " + Est(compMass,0.25,shipMass,forward) + " | " + Est(compMass,0.5,shipMass,forward) + " | " + Est(compMass,1.0,shipMass,forward) + " |\n", true);
-    lcd.WriteText("Ore  | Up | " + Est(oreMass,0.25,shipMass,up) + " | " + Est(oreMass,0.5,shipMass,up) + " | " + Est(oreMass,1.0,shipMass,up) + " |\n", true);
-    lcd.WriteText("      | Fw | " + Est(oreMass,0.25,shipMass,forward) + " | " + Est(oreMass,0.5,shipMass,forward) + " | " + Est(oreMass,1.0,shipMass,forward) + " |\n", true);
-    lcd.WriteText("Ice  | Up | " + Est(iceMass,0.25,shipMass,up) + " | " + Est(iceMass,0.5,shipMass,up) + " | " + Est(iceMass,1.0,shipMass,up) + " |\n", true);
-    lcd.WriteText("      | Fw | " + Est(iceMass,0.25,shipMass,forward) + " | " + Est(iceMass,0.5,shipMass,forward) + " | " + Est(iceMass,1.0,shipMass,forward) + " |\n", true);
+    lcd.WriteText("Scenario | Axis | 25% | 50% | 75% |100%|\n", true);
+
+    lcd.WriteText("Comp | Up | " + Est(compMass,0.25,shipMass,up) + " | " + Est(compMass,0.5,shipMass,up) + " | " + Est(compMass,0.75,shipMass,up) + " | " + Est(compMass,1.0,shipMass,up) + " |\n", true);
+    lcd.WriteText("      | Fw | " + Est(compMass,0.25,shipMass,forward) + " | " + Est(compMass,0.5,shipMass,forward) + " | " + Est(compMass,0.75,shipMass,forward) + " | " + Est(compMass,1.0,shipMass,forward) + " |\n", true);
+
+    lcd.WriteText("Ore  | Up | " + Est(oreMass,0.25,shipMass,up) + " | " + Est(oreMass,0.5,shipMass,up) + " | " + Est(oreMass,0.75,shipMass,up) + " | " + Est(oreMass,1.0,shipMass,up) + " |\n", true);
+    lcd.WriteText("      | Fw | " + Est(oreMass,0.25,shipMass,forward) + " | " + Est(oreMass,0.5,shipMass,forward) + " | " + Est(oreMass,0.75,shipMass,forward) + " | " + Est(oreMass,1.0,shipMass,forward) + " |\n", true);
+
+    lcd.WriteText("Ice  | Up | " + Est(iceMass,0.25,shipMass,up) + " | " + Est(iceMass,0.5,shipMass,up) + " | " + Est(iceMass,0.75,shipMass,up) + " | " + Est(iceMass,1.0,shipMass,up) + " |\n", true);
+    lcd.WriteText("      | Fw | " + Est(iceMass,0.25,shipMass,forward) + " | " + Est(iceMass,0.5,shipMass,forward) + " | " + Est(iceMass,0.75,shipMass,forward) + " | " + Est(iceMass,1.0,shipMass,forward) + " |\n", true);
+
     lcd.WriteText("\n> Ratio >100% = cannot lift that load under 1g", true);
 }
 

@@ -1,0 +1,110 @@
+// === [YST Ship Load Overview v3.2 - kg display + dual axis table, C#6 Compatible] ===
+
+List<IMyThrust> thrusters = new List<IMyThrust>();
+List<IMyShipController> controllers = new List<IMyShipController>();
+List<IMyTerminalBlock> containers = new List<IMyTerminalBlock>();
+IMyTextPanel lcd;
+
+public Program() {
+    Runtime.UpdateFrequency = UpdateFrequency.None;
+    RefreshBlocks();
+}
+
+void RefreshBlocks() {
+    lcd = null;
+    GridTerminalSystem.GetBlocksOfType(thrusters, t => t.CubeGrid == Me.CubeGrid);
+    GridTerminalSystem.GetBlocksOfType(controllers, c => c.CubeGrid == Me.CubeGrid);
+    GridTerminalSystem.GetBlocksOfType(containers, c =>
+        c.CubeGrid == Me.CubeGrid && (c.HasInventory && !(c is IMyGasTank)));
+    List<IMyTextPanel> panels = new List<IMyTextPanel>();
+    GridTerminalSystem.GetBlocksOfType(panels, p => p.CustomName.Contains("[YST] Main"));
+    if (panels.Count > 0) lcd = panels[0];
+}
+
+public void Main(string argument, UpdateType updateSource) {
+    if (lcd == null) {
+        RefreshBlocks();
+        if (lcd == null) {
+            Echo("No LCD [YST] Main found.");
+            return;
+        }
+    }
+
+    lcd.ContentType = ContentType.TEXT_AND_IMAGE;
+    lcd.Font = "Monospace";
+    lcd.FontSize = 0.7f;
+    lcd.Alignment = TextAlignment.LEFT;
+    lcd.WriteText("", false);
+
+    if (controllers.Count == 0) {
+        lcd.WriteText("No cockpit/RC found.", false);
+        return;
+    }
+
+    IMyShipController ctrl = controllers[0];
+    double shipMass = ctrl.CalculateShipMass().PhysicalMass;
+
+    // === Thrusters ===
+    double up=0,down=0,left=0,right=0,forward=0,backward=0;
+    foreach (var t in thrusters) {
+        double thrustKg = t.MaxEffectiveThrust * 0.1019716213;
+        switch (t.Orientation.Forward) {
+            case Base6Directions.Direction.Up: up += thrustKg; break;
+            case Base6Directions.Direction.Down: down += thrustKg; break;
+            case Base6Directions.Direction.Left: left += thrustKg; break;
+            case Base6Directions.Direction.Right: right += thrustKg; break;
+            case Base6Directions.Direction.Forward: forward += thrustKg; break;
+            case Base6Directions.Direction.Backward: backward += thrustKg; break;
+        }
+    }
+
+    // === Cargo ===
+    double totalVol=0,usedVol=0;
+    for (int i=0;i<containers.Count;i++)
+        for (int inv=0;inv<containers[i].InventoryCount;inv++) {
+            var invRef=containers[i].GetInventory(inv);
+            totalVol+=(double)invRef.MaxVolume;
+            usedVol+=(double)invRef.CurrentVolume;
+        }
+    double totalL=totalVol*1000, usedL=usedVol*1000;
+    double fill=(totalL>0)?(usedL/totalL*100):0;
+
+    // === Estimations ===
+    double compD=0.7, oreD=2.5, iceD=0.9;
+    double compMass=totalL*compD, oreMass=totalL*oreD, iceMass=totalL*iceD;
+
+    // === Output ===
+    lcd.WriteText("=== Ship Overview ===\n", true);
+    lcd.WriteText("Mass: " + Fm(shipMass) + "\n", true);
+    lcd.WriteText("Cargo: " + Fv(usedL) + "/" + Fv(totalL) + " (" + fill.ToString("0.0") + "%)\n\n", true);
+
+    lcd.WriteText("=== Thrust by Side (kgf) ===\n", true);
+    lcd.WriteText("Up:" + Pad(Fm(up),8) + "  Down:" + Fm(down) + "\n", true);
+    lcd.WriteText("Fwd:" + Pad(Fm(forward),8) + "  Back:" + Fm(backward) + "\n", true);
+    lcd.WriteText("Left:" + Pad(Fm(left),8) + "  Right:" + Fm(right) + "\n\n", true);
+
+    lcd.WriteText("=== Est. Load Ratios ===\n", true);
+    lcd.WriteText("Scenario | Axis | 25% | 50% |100%|\n", true);
+    // Components
+    lcd.WriteText("Comp | Up | " + Est(compMass,0.25,shipMass,up) + " | " + Est(compMass,0.5,shipMass,up) + " | " + Est(compMass,1.0,shipMass,up) + " |\n", true);
+    lcd.WriteText("      | Fw | " + Est(compMass,0.25,shipMass,forward) + " | " + Est(compMass,0.5,shipMass,forward) + " | " + Est(compMass,1.0,shipMass,forward) + " |\n", true);
+    // Ore
+    lcd.WriteText("Ore  | Up | " + Est(oreMass,0.25,shipMass,up) + " | " + Est(oreMass,0.5,shipMass,up) + " | " + Est(oreMass,1.0,shipMass,up) + " |\n", true);
+    lcd.WriteText("      | Fw | " + Est(oreMass,0.25,shipMass,forward) + " | " + Est(oreMass,0.5,shipMass,forward) + " | " + Est(oreMass,1.0,shipMass,forward) + " |\n", true);
+    // Ice
+    lcd.WriteText("Ice  | Up | " + Est(iceMass,0.25,shipMass,up) + " | " + Est(iceMass,0.5,shipMass,up) + " | " + Est(iceMass,1.0,shipMass,up) + " |\n", true);
+    lcd.WriteText("      | Fw | " + Est(iceMass,0.25,shipMass,forward) + " | " + Est(iceMass,0.5,shipMass,forward) + " | " + Est(iceMass,1.0,shipMass,forward) + " |\n", true);
+
+    lcd.WriteText("\n> Ratio >100% = cannot lift that load under 1g", true);
+}
+
+// === Helpers ===
+string Est(double full,double r,double baseM,double thrust){
+    double add=full*r; double tot=baseM+add; double pct=(tot/thrust)*100;
+    string w=Fm(add); return w+"("+pct.ToString("0")+"%)";
+}
+string Fm(double kg){if(kg>1e6)return(kg/1e6).ToString("0.00")+"Mt";
+if(kg>1e3)return(kg/1e3).ToString("0.0")+"t";return kg.ToString("0")+"kg";}
+string Fv(double L){if(L>1e6)return(L/1e6).ToString("0.00")+"ML";
+if(L>1e3)return(L/1e3).ToString("0.0")+"kL";return L.ToString("0")+"L";}
+string Pad(string s,int len){while(s.Length<len)s+=" ";return s;}

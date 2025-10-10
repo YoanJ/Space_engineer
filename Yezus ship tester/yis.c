@@ -1,4 +1,5 @@
-// === [YST Ship Load Overview v3.2 - kg display + dual axis table, C#6 Compatible] ===
+// === [YST Ship Load Overview v3.3 - Cockpit Reference, C#6 Compatible] ===
+// Calculates thrust directions relative to main cockpit (accurate even in 0g)
 
 List<IMyThrust> thrusters = new List<IMyThrust>();
 List<IMyShipController> controllers = new List<IMyShipController>();
@@ -16,6 +17,7 @@ void RefreshBlocks() {
     GridTerminalSystem.GetBlocksOfType(controllers, c => c.CubeGrid == Me.CubeGrid);
     GridTerminalSystem.GetBlocksOfType(containers, c =>
         c.CubeGrid == Me.CubeGrid && (c.HasInventory && !(c is IMyGasTank)));
+
     List<IMyTextPanel> panels = new List<IMyTextPanel>();
     GridTerminalSystem.GetBlocksOfType(panels, p => p.CustomName.Contains("[YST] Main"));
     if (panels.Count > 0) lcd = panels[0];
@@ -41,39 +43,44 @@ public void Main(string argument, UpdateType updateSource) {
         return;
     }
 
-    IMyShipController ctrl = controllers[0];
+    IMyShipController ctrl = GetMainController();
+    MatrixD refMatrix = ctrl.WorldMatrix;
+
     double shipMass = ctrl.CalculateShipMass().PhysicalMass;
 
-    // === Thrusters ===
-    double up=0,down=0,left=0,right=0,forward=0,backward=0;
+    // === Directional thrust relative to cockpit ===
+    double up = 0, down = 0, left = 0, right = 0, forward = 0, backward = 0;
+
     foreach (var t in thrusters) {
         double thrustKg = t.MaxEffectiveThrust * 0.1019716213;
-        switch (t.Orientation.Forward) {
-            case Base6Directions.Direction.Up: up += thrustKg; break;
-            case Base6Directions.Direction.Down: down += thrustKg; break;
-            case Base6Directions.Direction.Left: left += thrustKg; break;
-            case Base6Directions.Direction.Right: right += thrustKg; break;
-            case Base6Directions.Direction.Forward: forward += thrustKg; break;
-            case Base6Directions.Direction.Backward: backward += thrustKg; break;
-        }
+        Vector3D thrDir = t.WorldMatrix.Forward;
+        Vector3D local = Vector3D.TransformNormal(thrDir, MatrixD.Transpose(refMatrix));
+
+        if (local.Y > 0.9) up += thrustKg;
+        else if (local.Y < -0.9) down += thrustKg;
+        else if (local.Z > 0.9) forward += thrustKg;
+        else if (local.Z < -0.9) backward += thrustKg;
+        else if (local.X > 0.9) right += thrustKg;
+        else if (local.X < -0.9) left += thrustKg;
     }
 
     // === Cargo ===
-    double totalVol=0,usedVol=0;
-    for (int i=0;i<containers.Count;i++)
-        for (int inv=0;inv<containers[i].InventoryCount;inv++) {
-            var invRef=containers[i].GetInventory(inv);
-            totalVol+=(double)invRef.MaxVolume;
-            usedVol+=(double)invRef.CurrentVolume;
+    double totalVol = 0, usedVol = 0;
+    for (int i = 0; i < containers.Count; i++)
+        for (int inv = 0; inv < containers[i].InventoryCount; inv++) {
+            var invRef = containers[i].GetInventory(inv);
+            totalVol += (double)invRef.MaxVolume;
+            usedVol += (double)invRef.CurrentVolume;
         }
-    double totalL=totalVol*1000, usedL=usedVol*1000;
-    double fill=(totalL>0)?(usedL/totalL*100):0;
 
-    // === Estimations ===
-    double compD=0.7, oreD=2.5, iceD=0.9;
-    double compMass=totalL*compD, oreMass=totalL*oreD, iceMass=totalL*iceD;
+    double totalL = totalVol * 1000, usedL = usedVol * 1000;
+    double fill = (totalL > 0) ? (usedL / totalL * 100) : 0;
 
-    // === Output ===
+    // === Densités moyennes ===
+    double compD = 0.7, oreD = 2.5, iceD = 0.9;
+    double compMass = totalL * compD, oreMass = totalL * oreD, iceMass = totalL * iceD;
+
+    // === Output LCD ===
     lcd.WriteText("=== Ship Overview ===\n", true);
     lcd.WriteText("Mass: " + Fm(shipMass) + "\n", true);
     lcd.WriteText("Cargo: " + Fv(usedL) + "/" + Fv(totalL) + " (" + fill.ToString("0.0") + "%)\n\n", true);
@@ -85,20 +92,22 @@ public void Main(string argument, UpdateType updateSource) {
 
     lcd.WriteText("=== Est. Load Ratios ===\n", true);
     lcd.WriteText("Scenario | Axis | 25% | 50% |100%|\n", true);
-    // Components
     lcd.WriteText("Comp | Up | " + Est(compMass,0.25,shipMass,up) + " | " + Est(compMass,0.5,shipMass,up) + " | " + Est(compMass,1.0,shipMass,up) + " |\n", true);
     lcd.WriteText("      | Fw | " + Est(compMass,0.25,shipMass,forward) + " | " + Est(compMass,0.5,shipMass,forward) + " | " + Est(compMass,1.0,shipMass,forward) + " |\n", true);
-    // Ore
     lcd.WriteText("Ore  | Up | " + Est(oreMass,0.25,shipMass,up) + " | " + Est(oreMass,0.5,shipMass,up) + " | " + Est(oreMass,1.0,shipMass,up) + " |\n", true);
     lcd.WriteText("      | Fw | " + Est(oreMass,0.25,shipMass,forward) + " | " + Est(oreMass,0.5,shipMass,forward) + " | " + Est(oreMass,1.0,shipMass,forward) + " |\n", true);
-    // Ice
     lcd.WriteText("Ice  | Up | " + Est(iceMass,0.25,shipMass,up) + " | " + Est(iceMass,0.5,shipMass,up) + " | " + Est(iceMass,1.0,shipMass,up) + " |\n", true);
     lcd.WriteText("      | Fw | " + Est(iceMass,0.25,shipMass,forward) + " | " + Est(iceMass,0.5,shipMass,forward) + " | " + Est(iceMass,1.0,shipMass,forward) + " |\n", true);
-
     lcd.WriteText("\n> Ratio >100% = cannot lift that load under 1g", true);
 }
 
 // === Helpers ===
+IMyShipController GetMainController() {
+    for (int i = 0; i < controllers.Count; i++)
+        if (controllers[i].IsMainCockpit) return controllers[i];
+    return controllers[0];
+}
+
 string Est(double full,double r,double baseM,double thrust){
     double add=full*r; double tot=baseM+add; double pct=(tot/thrust)*100;
     string w=Fm(add); return w+"("+pct.ToString("0")+"%)";

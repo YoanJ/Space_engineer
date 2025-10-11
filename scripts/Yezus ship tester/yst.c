@@ -1,5 +1,5 @@
-// === [YST Ship Load Overview v3.6 - Cockpit Display Support, C#6 Compatible] ===
-// Works on cockpit screens tagged [YST:index] or panels [YST] Main
+// === [YST Ship Load Overview v3.7 - Display polish + details] ===
+// Works on cockpit screens tagged [YST:index] or panels [YST]
 // Accurate thrust & load ratios, multi-page LCD, 0g compatible
 
 List<IMyThrust> thrusters = new List<IMyThrust>();
@@ -22,7 +22,7 @@ void RefreshBlocks() {
     GridTerminalSystem.GetBlocksOfType(containers, c =>
         c.CubeGrid == Me.CubeGrid && (c.HasInventory && !(c is IMyGasTank)));
 
-    // 1️⃣ Priorité : LCD panel avec [YST]
+    // 1) Priorite: LCD panel avec [YST]
     List<IMyTextPanel> panels = new List<IMyTextPanel>();
     GridTerminalSystem.GetBlocksOfType(panels, p => p.CubeGrid == Me.CubeGrid && p.CustomName.Contains("[YST]"));
     if (panels.Count > 0) {
@@ -31,7 +31,7 @@ void RefreshBlocks() {
         return;
     }
 
-    // 2️⃣ Sinon, cockpit taggé [YST:index]
+    // 2) Sinon, cockpit tagge [YST:index]
     List<IMyCockpit> cockpits = new List<IMyCockpit>();
     GridTerminalSystem.GetBlocksOfType(cockpits, c => c.CubeGrid == Me.CubeGrid && c.CustomName.Contains("[YST:"));
     foreach (var c in cockpits) {
@@ -107,55 +107,90 @@ public void Main(string argument, UpdateType updateSource) {
     // === Combo Up + Fw (45°) ===
     double upForward=(up*0.707)+(forward*0.707);
 
-    // === Pagination ===
+    // === Pagination + persisted state ===
     int page = 1;
-    if (!string.IsNullOrEmpty(Storage)) int.TryParse(Storage, out page);
+    string savedDetail = null;
+    if (!string.IsNullOrEmpty(Storage)) {
+        var tokens = Storage.Split(';');
+        for (int i=0;i<tokens.Length;i++) {
+            var t = tokens[i];
+            if (t.StartsWith("p=")) int.TryParse(t.Substring(2), out page);
+            else if (t.StartsWith("d=")) savedDetail = t.Substring(2);
+        }
+    }
     string arg = (argument ?? "").Trim().ToLower();
     if (arg == "next") page = page >= 3 ? 1 : page + 1;
     else if (arg == "last") page = page <= 1 ? 3 : page - 1;
     if (page < 1 || page > 3) page = 1;
     Storage = page.ToString();
 
-    WriteLine("Page " + page + "/3  (args: next / last)");
+    // Parse detail commands
+    string detail = savedDetail;
+    if (arg == "comp" || arg == "ore" || arg == "ice" || arg == "empty") detail = arg;
+    if (arg == "back") detail = null;
+
+    // Clear redundant headers; keep things compact
+    WriteLine("Page " + page + "/3");
     WriteLine("");
 
     if (page == 1) {
-        WriteLine("=== PAGE 1: Overview ===");
+        WriteLine("Overview");
         WriteLine("Mass: " + Fm(shipMass));
         Vector3D gVec = ctrl.GetNaturalGravity();
         double g = gVec.Length();
-        WriteLine("Gravity: " + g.ToString("0.00") + " m/s² (" + (g/9.81).ToString("0.00") + " g)");
+        WriteLine("Gravity: " + g.ToString("0.00") + " m/s^2 (" + (g/9.81).ToString("0.00") + " g)");
         WriteLine("Cargo: " + Fv(usedL) + "/" + Fv(totalL) + " (" + fill.ToString("0.0") + "%)");
         WriteLine("");
-        WriteLine("=== Thrust by Side (kgf) ===");
+        WriteLine("Thrust by Side (kgf)");
         WriteLine("Up:" + Pad(Fm(up),8) + "  Down:" + Fm(down));
         WriteLine("Fwd:" + Pad(Fm(forward),8) + "  Back:" + Fm(backward));
         WriteLine("Left:" + Pad(Fm(left),8) + "  Right:" + Fm(right));
-        WriteLine("Up+Fw(45°): " + Fm(upForward));
+        WriteLine("Up+Fw (45 deg): " + Fm(upForward));
+        // Persist state
+        Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
+        WriteFooter(page);
         return;
     }
 
     if (page == 2) {
-        WriteLine("=== PAGE 2: Components ===");
-        WriteLine("Empty Load Ratio -> Up: " + Ratio(shipMass, up) + "  Fw: " + Ratio(shipMass, forward) + "  U+F: " + Ratio(shipMass, upForward));
-        WriteLine("");
-        WriteLine("Axis | 25% | 50% | 75% |100%|");
-        WriteLine("Up  | " + Est(compMass,0.25,shipMass,up) + " | " + Est(compMass,0.5,shipMass,up) + " | " + Est(compMass,0.75,shipMass,up) + " | " + Est(compMass,1.0,shipMass,up) + " |");
-        WriteLine("Fw  | " + Est(compMass,0.25,shipMass,forward) + " | " + Est(compMass,0.5,shipMass,forward) + " | " + Est(compMass,0.75,shipMass,forward) + " | " + Est(compMass,1.0,shipMass,forward) + " |");
-        WriteLine("U+F| " + Est(compMass,0.25,shipMass,upForward) + " | " + Est(compMass,0.5,shipMass,upForward) + " | " + Est(compMass,0.75,shipMass,upForward) + " | " + Est(compMass,1.0,shipMass,upForward) + " |");
+        if (detail == "comp" || detail == "empty") {
+            RenderDetail(detail == "comp" ? "Components" : "Empty", detail == "comp" ? compMass : 0.0, shipMass, up, forward, upForward);
+            WriteLine("");
+            WriteLine("< back");
+            Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
+            return;
+        }
+
+        WriteLine("Scenario Components  25% | 50% | 75% | 100%");
+        RenderScenarioRow("Up ", compMass, shipMass, up);
+        RenderScenarioRow("Fw ", compMass, shipMass, forward);
+        RenderScenarioRow("U+F", compMass, shipMass, upForward);
+        Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
+        WriteFooter(page);
         return;
     }
 
     if (page == 3) {
-        WriteLine("=== PAGE 3: Ore & Ice ===");
-        WriteLine("Axis | 25% | 50% | 75% |100%|");
-        WriteLine("Ore-Up| " + Est(oreMass,0.25,shipMass,up) + " | " + Est(oreMass,0.5,shipMass,up) + " | " + Est(oreMass,0.75,shipMass,up) + " | " + Est(oreMass,1.0,shipMass,up) + " |");
-        WriteLine("Ore-Fw| " + Est(oreMass,0.25,shipMass,forward) + " | " + Est(oreMass,0.5,shipMass,forward) + " | " + Est(oreMass,0.75,shipMass,forward) + " | " + Est(oreMass,1.0,shipMass,forward) + " |");
-        WriteLine("Ore-UF| " + Est(oreMass,0.25,shipMass,upForward) + " | " + Est(oreMass,0.5,shipMass,upForward) + " | " + Est(oreMass,0.75,shipMass,upForward) + " | " + Est(oreMass,1.0,shipMass,upForward) + " |");
+        if (detail == "ore" || detail == "ice") {
+            bool isOre = detail == "ore";
+            RenderDetail(isOre ? "Ore" : "Ice", isOre ? oreMass : iceMass, shipMass, up, forward, upForward);
+            WriteLine("");
+            WriteLine("< back");
+            Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
+            return;
+        }
+
+        WriteLine("Scenario Ore   25% | 50% | 75% | 100%");
+        RenderScenarioRow("Up ", oreMass, shipMass, up);
+        RenderScenarioRow("Fw ", oreMass, shipMass, forward);
+        RenderScenarioRow("U+F", oreMass, shipMass, upForward);
         WriteLine("");
-        WriteLine("Ice-Up| " + Est(iceMass,0.25,shipMass,up) + " | " + Est(iceMass,0.5,shipMass,up) + " | " + Est(iceMass,0.75,shipMass,up) + " | " + Est(iceMass,1.0,shipMass,up) + " |");
-        WriteLine("Ice-Fw| " + Est(iceMass,0.25,shipMass,forward) + " | " + Est(iceMass,0.5,shipMass,forward) + " | " + Est(iceMass,0.75,shipMass,forward) + " | " + Est(iceMass,1.0,shipMass,forward) + " |");
-        WriteLine("Ice-UF| " + Est(iceMass,0.25,shipMass,upForward) + " | " + Est(iceMass,0.5,shipMass,upForward) + " | " + Est(iceMass,0.75,shipMass,upForward) + " | " + Est(iceMass,1.0,shipMass,upForward) + " |");
+        WriteLine("Scenario Ice   25% | 50% | 75% | 100%");
+        RenderScenarioRow("Up ", iceMass, shipMass, up);
+        RenderScenarioRow("Fw ", iceMass, shipMass, forward);
+        RenderScenarioRow("U+F", iceMass, shipMass, upForward);
+        Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
+        WriteFooter(page);
         return;
     }
 }
@@ -171,6 +206,52 @@ void WriteLine(string text, bool append=true) {
     if (surface != null) surface.WriteText(text + "\n", append);
     else if (lcd != null) lcd.WriteText(text + "\n", append);
     else Echo(text);
+}
+
+// Footer nav hint
+void WriteFooter(int page) {
+    WriteLine("");
+    if (page <= 1) WriteLine("next >");
+    else if (page >= 3) WriteLine("< last");
+    else WriteLine("< last        next >");
+}
+
+// Tiny progress bar + percentage cell for one column
+string Cell(double scenarioMass, double factor, double baseMass, double axisThrust) {
+    double add = scenarioMass * factor;
+    double pct = ((baseMass + add) / axisThrust) * 100.0; // >100% = cannot lift
+    return Bar(pct, 6) + " " + pct.ToString("0") + "%";
+}
+
+// Render a single row for Up/Fw/U+F across 25/50/75/100
+void RenderScenarioRow(string label, double scenarioMass, double baseMass, double axisThrust) {
+    WriteLine(label + " | "
+        + Cell(scenarioMass, 0.25, baseMass, axisThrust) + " | "
+        + Cell(scenarioMass, 0.50, baseMass, axisThrust) + " | "
+        + Cell(scenarioMass, 0.75, baseMass, axisThrust) + " | "
+        + Cell(scenarioMass, 1.00, baseMass, axisThrust));
+}
+
+// Detail view for a scenario (100%)
+void RenderDetail(string title, double scenarioMass, double baseMass, double upT, double fwT, double ufT) {
+    double simMass = baseMass + scenarioMass;
+    WriteLine("Scenario detail: " + title);
+    WriteLine("Simulated weight: " + Fm(simMass));
+    WriteLine("Capacity (1g): Up " + Capacity(simMass, upT) + ", Fw " + Capacity(simMass, fwT) + ", U+F " + Capacity(simMass, ufT));
+}
+
+// Percent capacity helper (inverse of Ratio)
+string Capacity(double mass, double thrustKg) {
+    if (thrustKg <= 0) return "N/A";
+    double cap = (thrustKg / mass) * 100.0;
+    return cap.ToString("0.0") + "%";
+}
+
+// Draw a tiny ASCII progress bar; clamp overfill
+string Bar(double pct, int width) {
+    if (pct < 0) pct = 0; if (pct > 999) pct = 999; // avoid crazy numbers blowing width
+    int fill = (int)Math.Round(Math.Min(100.0, pct) / 100.0 * width);
+    return "[" + new string('#', fill) + new string('.', Math.Max(0, width - fill)) + "]";
 }
 
 string Ratio(double mass,double thrustKg){

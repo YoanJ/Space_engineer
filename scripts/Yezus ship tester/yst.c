@@ -120,6 +120,7 @@ public void Main(string argument, UpdateType updateSource) {
         }
     }
     string arg = (argument ?? "").Trim().ToLower();
+    bool isNav = (arg == "next" || arg == "last");
     if (arg == "next") page = page >= TOTAL_PAGES ? 1 : page + 1;
     else if (arg == "last") page = page <= 1 ? TOTAL_PAGES : page - 1;
     if (page < 1 || page > TOTAL_PAGES) page = 1;
@@ -128,6 +129,7 @@ public void Main(string argument, UpdateType updateSource) {
     string detail = savedDetail;
     if (arg == "comp" || arg == "ore" || arg == "ice" || arg == "empty") detail = arg;
     if (arg == "back") detail = null;
+    if (isNav) detail = null; // clear detail when navigating pages
 
     // Clear redundant headers; keep things compact
 
@@ -176,9 +178,9 @@ public void Main(string argument, UpdateType updateSource) {
 
     // Page 4: Scenario Components
     if (page == 4) {
-        if (detail == "comp" || detail == "empty") {
+        if (detail == "comp") {
             Title("Scenario", page, TOTAL_PAGES);
-            RenderDetail(detail == "comp" ? "Components" : "Empty", detail == "comp" ? compMass : 0.0, shipMass, up, forward, upForward);
+            RenderDetail("Components", compMass, shipMass, up, forward, upForward);
             WriteLine("");
             WriteLine("< back");
             Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");

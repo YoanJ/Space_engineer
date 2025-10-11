@@ -11,7 +11,7 @@ IMyTextPanel lcd;
 public Program() {
     Runtime.UpdateFrequency = UpdateFrequency.None;
     RefreshBlocks();
-    if (string.IsNullOrEmpty(Storage)) Storage = "mode=overview;scenario=empty;slice=25;cursor=0";
+    if (string.IsNullOrEmpty(Storage)) Storage = "mode=overview;scenario=comp;slice=25;cursor=0";
 }
 
 void RefreshBlocks() {
@@ -84,8 +84,8 @@ public void Main(string argument, UpdateType updateSource) {
 
         if (local.Y > 0.9) up += thrustKg;
         else if (local.Y < -0.9) down += thrustKg;
-        else if (local.Z > 0.9) forward += thrustKg;
-        else if (local.Z < -0.9) backward += thrustKg;
+        else if (local.Z < -0.9) forward += thrustKg;   // cockpit -Z is Forward
+        else if (local.Z > 0.9) backward += thrustKg;  // cockpit +Z is Backward
         else if (local.X > 0.9) right += thrustKg;
         else if (local.X < -0.9) left += thrustKg;
     }
@@ -122,7 +122,8 @@ public void Main(string argument, UpdateType updateSource) {
     }
 
     string arg = (argument ?? "").Trim().ToLower();
-    if (arg == "comp" || arg == "ore" || arg == "ice" || arg == "empty") { mode = "scenario_overview"; scenario = arg; cursor=0; }
+    if (arg == "comp" || arg == "ore" || arg == "ice") { mode = "scenario_overview"; scenario = arg; cursor=0; }
+    if (arg == "empty") { mode = "thrust_overview"; cursor=0; }
     if (arg == "menu") { mode = "overview"; cursor=0; }
 
     // cursor bounds computed by helper outside Main
@@ -139,7 +140,7 @@ public void Main(string argument, UpdateType updateSource) {
     else if (arg == "apply") {
         if (mode=="overview") {
             if (cursor==0) { mode = "thrust_overview"; cursor=0; }
-            else if (cursor==1) { mode = "scenario_overview"; if (string.IsNullOrEmpty(scenario)) scenario="empty"; cursor=0; }
+            else if (cursor==1) { mode = "scenario_overview"; if (string.IsNullOrEmpty(scenario)) scenario="comp"; cursor=0; }
         } else if (mode=="thrust_overview") {
             if (cursor==0) { mode = "thrust_detail"; cursor=0; }
             else if (cursor==1) { mode = "overview"; cursor=0; }
@@ -147,9 +148,9 @@ public void Main(string argument, UpdateType updateSource) {
             mode = "thrust_overview"; cursor=0;
         } else if (mode=="scenario_overview") {
             if (cursor==0) {
-                string[] order = new[]{"empty","comp","ore","ice"};
+                string[] order = new[]{"comp","ore","ice"};
                 int idx=0; for(int i=0;i<order.Length;i++){ if(order[i]==scenario){ idx=i; break; } }
-                scenario = order[(idx+1)%4];
+                scenario = order[(idx+1)%order.Length];
             } else if (cursor==1) { mode = "scenario_detail"; slice=25; cursor=0; }
             else if (cursor==2) { mode = "overview"; cursor=0; }
         } else if (mode=="scenario_detail") {
@@ -244,13 +245,13 @@ public void Main(string argument, UpdateType updateSource) {
         double sMass = ScenarioMass(scenario, compMass, oreMass, iceMass);
         double w = shipMass + sMass*(slice/100.0);
         WriteLine("Capacity at 1g - " + slice + "%");
-        RenderAxisRatio("UP  ", w, up);
-        RenderAxisRatio("DOWN", w, down);
-        RenderAxisRatio("LEFT", w, left);
-        RenderAxisRatio("RIGHT", w, right);
-        RenderAxisRatio("FWD ", w, forward);
-        RenderAxisRatio("BCK ", w, backward);
-        RenderAxisRatio("U+F ", w, upForward);
+        RenderAxisCapacity("UP  ", up, w);
+        RenderAxisCapacity("DOWN", down, w);
+        RenderAxisCapacity("LEFT", left, w);
+        RenderAxisCapacity("RIGHT", right, w);
+        RenderAxisCapacity("FWD ", forward, w);
+        RenderAxisCapacity("BCK ", backward, w);
+        RenderAxisCapacity("U+F ", upForward, w);
         WriteLine("");
         WriteLine((cursor==0?"> ":"  ") + "Next slice");
         WriteLine((cursor==1?"> ":"  ") + "Back");
@@ -327,8 +328,9 @@ string CapFirst(string s){ if(string.IsNullOrEmpty(s)) return s; return char.ToU
 
 // Tiny progress bar + percentage cell for one column
 string Cell(double scenarioMass, double factor, double baseMass, double axisThrust) {
-    double add = scenarioMass * factor;
-    double pct = ((baseMass + add) / axisThrust) * 100.0; // >100% = cannot lift
+    double req = baseMass + scenarioMass * factor;
+    if (req <= 0 || axisThrust <= 0) return "[......] 0%";
+    double pct = (axisThrust / req) * 100.0;
     return Bar(pct, 6) + " " + pct.ToString("0") + "%";
 }
 

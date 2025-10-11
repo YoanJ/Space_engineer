@@ -81,6 +81,59 @@ public void Main(string argument, UpdateType updateSource) {
     // === Combinaison Up + Forward (45°) ===
     double upForward = (up * 0.707) + (forward * 0.707);
 
+    // === Paging + Output ===
+    int page = 1;
+    if (!string.IsNullOrEmpty(Storage)) int.TryParse(Storage, out page);
+    string arg = (argument ?? "").Trim().ToLower();
+    if (arg == "next") page = page >= 3 ? 1 : page + 1;
+    else if (arg == "last") page = page <= 1 ? 3 : page - 1;
+    if (page < 1 || page > 3) page = 1;
+    Storage = page.ToString();
+
+    lcd.WriteText("Page " + page + "/3 - arg: next | last\n\n", true);
+
+    if (page == 1) {
+        lcd.WriteText("=== Ship Overview ===\n", true);
+        lcd.WriteText("Mass: " + Fm(shipMass) + "\n", true);
+        lcd.WriteText("Cargo: " + Fv(usedL) + "/" + Fv(totalL) + " (" + fill.ToString("0.0") + "%)\n\n", true);
+
+        lcd.WriteText("=== Thrust by Side (kgf) ===\n", true);
+        lcd.WriteText("Up:" + Pad(Fm(up),8) + "  Down:" + Fm(down) + "\n", true);
+        lcd.WriteText("Fwd:" + Pad(Fm(forward),8) + "  Back:" + Fm(backward) + "\n", true);
+        lcd.WriteText("Left:" + Pad(Fm(left),8) + "  Right:" + Fm(right) + "\n", true);
+        lcd.WriteText("Up+Fw (45 deg): " + Fm(upForward) + "\n", true);
+        return;
+    }
+
+    if (page == 2) {
+        lcd.WriteText("=== Load Ratio (Empty) ===\n", true);
+        lcd.WriteText("Up: " + Ratio(shipMass, up) + "   Fw: " + Ratio(shipMass, forward) + "   Up+Fw: " + Ratio(shipMass, upForward) + "\n\n", true);
+
+        lcd.WriteText("=== Est. Load Ratios - Components ===\n", true);
+        lcd.WriteText("Axis | 25% | 50% | 75% |100%|\n", true);
+        lcd.WriteText("Up  | " + Est(compMass,0.25,shipMass,up) + " | " + Est(compMass,0.5,shipMass,up) + " | " + Est(compMass,0.75,shipMass,up) + " | " + Est(compMass,1.0,shipMass,up) + " |\n", true);
+        lcd.WriteText("Fw  | " + Est(compMass,0.25,shipMass,forward) + " | " + Est(compMass,0.5,shipMass,forward) + " | " + Est(compMass,0.75,shipMass,forward) + " | " + Est(compMass,1.0,shipMass,forward) + " |\n", true);
+        lcd.WriteText("U+F | " + Est(compMass,0.25,shipMass,upForward) + " | " + Est(compMass,0.5,shipMass,upForward) + " | " + Est(compMass,0.75,shipMass,upForward) + " | " + Est(compMass,1.0,shipMass,upForward) + " |\n", true);
+        lcd.WriteText("\n> Ratio >100% = cannot lift under 1g", true);
+        return;
+    }
+
+    if (page == 3) {
+        lcd.WriteText("=== Est. Load Ratios - Ore ===\n", true);
+        lcd.WriteText("Axis | 25% | 50% | 75% |100%|\n", true);
+        lcd.WriteText("Up  | " + Est(oreMass,0.25,shipMass,up) + " | " + Est(oreMass,0.5,shipMass,up) + " | " + Est(oreMass,0.75,shipMass,up) + " | " + Est(oreMass,1.0,shipMass,up) + " |\n", true);
+        lcd.WriteText("Fw  | " + Est(oreMass,0.25,shipMass,forward) + " | " + Est(oreMass,0.5,shipMass,forward) + " | " + Est(oreMass,0.75,shipMass,forward) + " | " + Est(oreMass,1.0,shipMass,forward) + " |\n", true);
+        lcd.WriteText("U+F | " + Est(oreMass,0.25,shipMass,upForward) + " | " + Est(oreMass,0.5,shipMass,upForward) + " | " + Est(oreMass,0.75,shipMass,upForward) + " | " + Est(oreMass,1.0,shipMass,upForward) + " |\n\n", true);
+
+        lcd.WriteText("=== Est. Load Ratios - Ice ===\n", true);
+        lcd.WriteText("Axis | 25% | 50% | 75% |100%|\n", true);
+        lcd.WriteText("Up  | " + Est(iceMass,0.25,shipMass,up) + " | " + Est(iceMass,0.5,shipMass,up) + " | " + Est(iceMass,0.75,shipMass,up) + " | " + Est(iceMass,1.0,shipMass,up) + " |\n", true);
+        lcd.WriteText("Fw  | " + Est(iceMass,0.25,shipMass,forward) + " | " + Est(iceMass,0.5,shipMass,forward) + " | " + Est(iceMass,0.75,shipMass,forward) + " | " + Est(iceMass,1.0,shipMass,forward) + " |\n", true);
+        lcd.WriteText("U+F | " + Est(iceMass,0.25,shipMass,upForward) + " | " + Est(iceMass,0.5,shipMass,upForward) + " | " + Est(iceMass,0.75,shipMass,upForward) + " | " + Est(iceMass,1.0,shipMass,upForward) + " |\n", true);
+        lcd.WriteText("\n> Ratio >100% = cannot lift under 1g", true);
+        return;
+    }
+
     // === Output ===
     lcd.WriteText("=== Ship Overview ===\n", true);
     lcd.WriteText("Mass: " + Fm(shipMass) + "\n", true);

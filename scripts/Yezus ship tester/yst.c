@@ -154,12 +154,6 @@ public void Main(string argument, UpdateType updateSource) {
         WriteLine("Left:" + Pad(Fm(left),8) + "  Right:" + Fm(right));
         WriteLine("U+F: " + Fm(upForward));
         WriteLine("");
-        WriteLine("Load Ratio (Empty) @1g");
-        WriteLine("Up: " + Ratio(shipMass, up) + "   Down: " + Ratio(shipMass, down));
-        WriteLine("Left: " + Ratio(shipMass, left) + "   Right: " + Ratio(shipMass, right));
-        WriteLine("Fwd: " + Ratio(shipMass, forward) + "   Back: " + Ratio(shipMass, backward));
-        WriteLine("U+F: " + Ratio(shipMass, upForward));
-        Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
         WriteFooter(page, TOTAL_PAGES);
         return;
     }

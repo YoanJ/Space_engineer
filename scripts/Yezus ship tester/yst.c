@@ -263,6 +263,13 @@ public void Main(string argument, UpdateType updateSource) {
         RenderScenarioRow("Up ", sMass, shipMass, up);
         RenderScenarioRow("Fw ", sMass, shipMass, forward);
         RenderScenarioRow("U+F", sMass, shipMass, upForward);
+        // Simple hydro estimation to exit atmosphere
+        double earthPct = EstimateHydroPercent(shipMass + sMass, refMatrix, 50000.0); // ~50 km
+        double moonPct  = EstimateHydroPercent(shipMass + sMass, refMatrix, 15000.0); // ~15 km
+        WriteLine("");
+        WriteLine("Hydro to leave:");
+        WriteLine("  Earth: " + (earthPct>=0? earthPct.ToString("0.0")+"%" : "N/A"));
+        WriteLine("  Moon : " + (moonPct>=0? moonPct.ToString("0.0")+"%" : "N/A"));
         WriteLine("");
         WriteLine((cursor==0?"> ":"  ") + "Next scenario");
         WriteLine((cursor==1?"> ":"  ") + "Details");
@@ -497,6 +504,39 @@ List<List<string>> BuildShipSections(MatrixD refMatrix){
 // Safe lookup for compact table counts
 int CountOrZero(Dictionary<string,int> map, string key){
     int v; return map != null && map.TryGetValue(key, out v) ? v : 0;
+}
+
+// Sum total hydrogen capacity (L) on this grid
+double TotalHydrogenCapacityL(){
+    double cap=0; for (int i=0;i<gasTanks.Count;i++){
+        var t = gasTanks[i]; string n = (t.DefinitionDisplayNameText ?? t.CustomName ?? "").ToLower();
+        if (n.Contains("hydrogen")) cap += t.Capacity; // liters
+    }
+    return cap;
+}
+
+// Estimate hydro percent to climb distance at 100 m/s with small buffer
+double EstimateHydroPercent(double massKg, MatrixD refMatrix, double distanceMeters){
+    double hydroCapL = TotalHydrogenCapacityL(); if (hydroCapL <= 0) return -1;
+    // Required hover force (N) at 1g
+    double neededN = massKg * 9.81;
+    // Hydro up thrust available (N)
+    double hydroUpN = 0;
+    for (int i=0;i<thrusters.Count;i++){
+        var t = thrusters[i];
+        string name = (t.DefinitionDisplayNameText ?? t.CustomName ?? "").ToLower();
+        if (!name.Contains("hydrogen")) continue;
+        Vector3D local = Vector3D.TransformNormal(-t.WorldMatrix.Forward, MatrixD.Transpose(refMatrix));
+        if (local.Y > 0.9) hydroUpN += t.MaxEffectiveThrust; // N
+    }
+    if (hydroUpN <= 0) return -1;
+    double time = (distanceMeters / 100.0) * 1.2; // 100 m/s + 20% buffer
+    // Assume hydrogen flow ~ k * thrust(N). Calibrated k so a 12 MN hydro burns ~1440 L/s
+    const double kL_per_Ns = 1.2e-4; // liters per N*second (rough)
+    // At steady 100 m/s, assume thrust ~= weight (no acceleration). Cap at available hydro.
+    double usedN = Math.Min(neededN, hydroUpN);
+    double liters = kL_per_Ns * usedN * time;
+    return Math.Min(999.0, liters / hydroCapL * 100.0);
 }
 
 // Tiny progress bar + percentage cell for one column

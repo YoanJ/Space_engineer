@@ -302,26 +302,14 @@ void RenderDetail(string title, double scenarioMass, double baseMass, double upT
     double w100 = baseMass + scenarioMass;
     WriteLine("Scenario detail:");
     WriteLine("[" + title + "]");
-    WriteLine("Estimated weight:");
-    WriteLine("  25%:  " + Fm(w25));
-    WriteLine("  50%:  " + Fm(w50));
-    WriteLine("  75%:  " + Fm(w75));
-    WriteLine("  100%: " + Fm(w100));
-    WriteLine("Capacity (1g):");
-    WriteLine("        25%    50%");
-    WriteLine("  Up:  " + Capacity(w25, upT) + " | " + Capacity(w50, upT));
-    WriteLine("        75%    100%");
-    WriteLine("       " + Capacity(w75, upT) + " | " + Capacity(w100, upT));
+    WriteLine("Ship mass: " + Fm(baseMass));
+    WriteLine("Cargo mass:");
+    WriteLine("  25%: " + Fm(scenarioMass*0.25) + " | 50%: " + Fm(scenarioMass*0.50));
+    WriteLine("  75%: " + Fm(scenarioMass*0.75) + " | 100%: " + Fm(scenarioMass));
     WriteLine("");
-    WriteLine("        25%    50%");
-    WriteLine("  Fw:  " + Capacity(w25, fwT) + " | " + Capacity(w50, fwT));
-    WriteLine("        75%    100%");
-    WriteLine("       " + Capacity(w75, fwT) + " | " + Capacity(w100, fwT));
-    WriteLine("");
-    WriteLine("        25%    50%");
-    WriteLine("  U+F: " + Capacity(w25, ufT) + " | " + Capacity(w50, ufT));
-    WriteLine("        75%    100%");
-    WriteLine("       " + Capacity(w75, ufT) + " | " + Capacity(w100, ufT));
+    WriteLine("Ship + cargo:");
+    WriteLine("  25%: " + Fm(w25) + " | 50%: " + Fm(w50));
+    WriteLine("  75%: " + Fm(w75) + " | 100%: " + Fm(w100));
 }
 
 // Percent capacity helper (inverse of Ratio)

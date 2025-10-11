@@ -5,6 +5,8 @@
 List<IMyThrust> thrusters = new List<IMyThrust>();
 List<IMyShipController> controllers = new List<IMyShipController>();
 List<IMyTerminalBlock> containers = new List<IMyTerminalBlock>();
+List<IMyCargoContainer> cargoContainers = new List<IMyCargoContainer>();
+List<IMyGasTank> gasTanks = new List<IMyGasTank>();
 IMyTextSurface surface; // can be cockpit LCD or panel
 IMyTextPanel lcd;
 
@@ -22,6 +24,8 @@ void RefreshBlocks() {
     GridTerminalSystem.GetBlocksOfType(controllers, c => c.CubeGrid == Me.CubeGrid);
     GridTerminalSystem.GetBlocksOfType(containers, c =>
         c.CubeGrid == Me.CubeGrid && (c.HasInventory && !(c is IMyGasTank)));
+    GridTerminalSystem.GetBlocksOfType(cargoContainers, c => c.CubeGrid == Me.CubeGrid);
+    GridTerminalSystem.GetBlocksOfType(gasTanks, t => t.CubeGrid == Me.CubeGrid);
 
     // 1) Priorite: LCD panel avec [YST]
     List<IMyTextPanel> panels = new List<IMyTextPanel>();
@@ -109,7 +113,7 @@ public void Main(string argument, UpdateType updateSource) {
     double upForward=(up*0.707)+(forward*0.707);
 
     // === New UI state machine (modes + cursor) ===
-    string mode = "overview", scenario = "empty"; int slice = 25; int cursor = 0;
+    string mode = "overview", scenario = "empty"; int slice = 25; int cursor = 0; int shipSlice = 0;
     if (!string.IsNullOrEmpty(Storage)) {
         var parts = Storage.Split(';');
         for (int i=0;i<parts.Length;i++) {
@@ -118,12 +122,14 @@ public void Main(string argument, UpdateType updateSource) {
             else if (p.StartsWith("scenario=")) scenario = p.Substring(9);
             else if (p.StartsWith("slice=")) int.TryParse(p.Substring(6), out slice);
             else if (p.StartsWith("cursor=")) int.TryParse(p.Substring(7), out cursor);
+            else if (p.StartsWith("shipslice=")) int.TryParse(p.Substring(10), out shipSlice);
         }
     }
 
     string arg = (argument ?? "").Trim().ToLower();
     if (arg == "comp" || arg == "ore" || arg == "ice") { mode = "scenario_overview"; scenario = arg; cursor=0; }
     if (arg == "empty") { mode = "thrust_overview"; cursor=0; }
+    if (arg == "ship") { mode = "ship_overview"; cursor=0; shipSlice=0; }
     if (arg == "menu") { mode = "overview"; cursor=0; }
 
     // cursor bounds computed by helper outside Main
@@ -136,11 +142,13 @@ public void Main(string argument, UpdateType updateSource) {
         else if (mode=="scenario_overview") { mode = "overview"; cursor=0; }
         else if (mode=="scenario_detail") { mode = "scenario_overview"; cursor=0; }
         else if (mode=="scenario_slice") { mode = "scenario_detail"; cursor=0; }
+        else if (mode=="ship_overview") { mode = "overview"; cursor=0; }
     }
     else if (arg == "apply") {
         if (mode=="overview") {
             if (cursor==0) { mode = "thrust_overview"; cursor=0; }
             else if (cursor==1) { mode = "scenario_overview"; if (string.IsNullOrEmpty(scenario)) scenario="comp"; cursor=0; }
+            else if (cursor==2) { mode = "ship_overview"; cursor=0; shipSlice=0; }
         } else if (mode=="thrust_overview") {
             if (cursor==0) { mode = "thrust_detail"; cursor=0; }
             else if (cursor==1) { mode = "overview"; cursor=0; }
@@ -159,11 +167,14 @@ public void Main(string argument, UpdateType updateSource) {
         } else if (mode=="scenario_slice") {
             if (cursor==0) { slice = (slice==25)?50:(slice==50)?75:(slice==75)?100:25; }
             else if (cursor==1) { mode = "scenario_detail"; cursor=0; }
+        } else if (mode=="ship_overview") {
+            if (cursor==0) { shipSlice++; }
+            else if (cursor==1) { mode = "overview"; cursor=0; }
         }
     }
 
     // Save
-    Storage = "mode="+mode+";scenario="+scenario+";slice="+slice.ToString()+";cursor="+cursor.ToString();
+    Storage = "mode="+mode+";scenario="+scenario+";slice="+slice.ToString()+";cursor="+cursor.ToString()+";shipslice="+shipSlice.ToString();
 
     // Render
     if (mode=="overview") {
@@ -176,7 +187,38 @@ public void Main(string argument, UpdateType updateSource) {
         WriteLine("");
         WriteLine((cursor==0?"> ":"  ") + "Thrust overview");
         WriteLine((cursor==1?"> ":"  ") + "Scenarios");
+        WriteLine((cursor==2?"> ":"  ") + "Ship overview");
         WriteFooterText("up/down, apply, menu");
+        return;
+    }
+
+    if (mode=="ship_overview") {
+        Title("Ship overview", 1, 1);
+        int maxLines = ComputeMaxLines(surface);
+        int reserve = 4; // footer + options spacing
+        int avail = Math.Max(8, maxLines - reserve);
+
+        var sections = BuildShipSections(refMatrix);
+        // Slice packing by full sections
+        int start = 0; int end = 0; int current = 0;
+        while (true) {
+            int lines = 0; end = start;
+            while (end < sections.Count && lines + sections[end].Count <= avail) { lines += sections[end].Count; end++; }
+            if (current == shipSlice) break;
+            current++;
+            if (end >= sections.Count) { shipSlice = 0; start = 0; current = 0; continue; }
+            start = end;
+        }
+        // Render this slice
+        for (int i=start;i<end;i++) {
+            var block = sections[i];
+            for (int j=0;j<block.Count;j++) WriteLine(block[j]);
+            if (i<end-1) WriteLine("");
+        }
+        WriteLine("");
+        WriteLine((cursor==0?"> ":"  ") + "Next slice");
+        WriteLine((cursor==1?"> ":"  ") + "Back");
+        WriteFooterText("apply to navigate");
         return;
     }
 
@@ -302,12 +344,13 @@ string Center(string s) {
 }
 
 int MaxCursorMode(string m){
-    if (m=="overview") return 1;                // thrust, scenarios
+    if (m=="overview") return 2;                // thrust, scenarios, ship overview
     if (m=="thrust_overview") return 1;         // details, back
     if (m=="thrust_detail") return 0;           // back
     if (m=="scenario_overview") return 2;       // next, details, back
     if (m=="scenario_detail") return 1;         // next slice, back
     if (m=="scenario_slice") return 1;          // next slice, back
+    if (m=="ship_overview") return 1;           // next slice, back
     return 0;
 }
 
@@ -325,6 +368,107 @@ double ScenarioMass(string scen, double comp, double ore, double ice) {
     if (scen=="comp") return comp; if (scen=="ore") return ore; if (scen=="ice") return ice; return 0.0;
 }
 string CapFirst(string s){ if(string.IsNullOrEmpty(s)) return s; return char.ToUpper(s[0])+s.Substring(1); }
+
+int ComputeMaxLines(IMyTextSurface surf){
+    var size = surf.SurfaceSize; // pixels
+    // empirical line height factor for monospace
+    float linePx = 22f * surf.FontSize; // tweak if needed
+    int lines = (int)(size.Y / Math.Max(12f, linePx));
+    return Math.Max(12, lines);
+}
+
+string ThrusterTypeTag(IMyThrust t){
+    string n = t.DefinitionDisplayNameText ?? t.CustomName;
+    string l = (n??"").ToLower();
+    if (l.Contains("hydrogen")) return "Hydro";
+    if (l.Contains("atmo")) return "Atmo";
+    if (l.Contains("atmos")) return "Atmo";
+    return "Ion";
+}
+
+string GridTag(IMyTerminalBlock b){
+    return b.CubeGrid.GridSizeEnum == MyCubeSize.Large ? "LG" : "SG";
+}
+
+string ThrusterSizeTag(IMyThrust t){
+    string sub = t.BlockDefinition.SubtypeName ?? t.DefinitionDisplayNameText ?? "";
+    string l = sub.ToLower();
+    if (l.Contains("large")) return "Big";
+    if (l.Contains("small")) return "Sml";
+    // Fallback by power threshold
+    return t.MaxEffectiveThrust > 1e6 ? "Big" : "Sml";
+}
+
+string ContainerTypeTag(IMyCargoContainer c){
+    string n = c.DefinitionDisplayNameText ?? c.CustomName; string l=(n??"").ToLower();
+    if (l.Contains("small")) return "Small Cargo";
+    if (l.Contains("medium")) return "Medium Cargo";
+    if (l.Contains("large")) return "Large Cargo";
+    return n;
+}
+
+string GroupGas(List<IMyGasTank> tanks, bool hydrogen, Dictionary<string,int> outMap){
+    for (int i=0;i<tanks.Count;i++){
+        var t=tanks[i]; string n=t.DefinitionDisplayNameText ?? t.CustomName; string l=(n??"").ToLower();
+        bool isH = l.Contains("hydrogen"); bool isO = l.Contains("oxygen");
+        if (hydrogen && !isH) continue; if (!hydrogen && !isO) continue;
+        string key = n;
+        if (!outMap.ContainsKey(key)) outMap[key]=0; outMap[key]++;
+    }
+    if (outMap.Count==0) return "- none -";
+    var sb = new System.Text.StringBuilder();
+    foreach (var kv in outMap) { sb.Append("  ").Append(kv.Key).Append(": x").Append(kv.Value).Append("\n"); }
+    return sb.ToString().TrimEnd();
+}
+
+// Build ship overview sections; each section is a list of lines, kept intact per slice
+List<List<string>> BuildShipSections(MatrixD refMatrix){
+    var sections = new List<List<string>>();
+
+    // Thrusters by side
+    var thr = new List<string>();
+    thr.Add("Thrusters by side (type-grid-size):");
+    string[] sides = new[]{"Up","Down","Left","Right","Fwd","Back"};
+    var sideMap = new Dictionary<string, Dictionary<string,int>>();
+    for (int i=0;i<sides.Length;i++) sideMap[sides[i]] = new Dictionary<string,int>();
+    for (int i=0;i<thrusters.Count;i++){
+        var t = thrusters[i];
+        Vector3D local = Vector3D.TransformNormal(-t.WorldMatrix.Forward, MatrixD.Transpose(refMatrix));
+        string side=null;
+        if (local.Y > 0.9) side="Up"; else if (local.Y < -0.9) side="Down";
+        else if (local.Z < -0.9) side="Fwd"; else if (local.Z > 0.9) side="Back";
+        else if (local.X > 0.9) side="Right"; else if (local.X < -0.9) side="Left";
+        if (side==null) continue;
+        string ty = ThrusterTypeTag(t) + " " + GridTag(t) + " " + ThrusterSizeTag(t);
+        var map = sideMap[side]; if (!map.ContainsKey(ty)) map[ty]=0; map[ty]++;
+    }
+    for (int i=0;i<sides.Length;i++){
+        var counts = sideMap[sides[i]]; string line = sides[i].PadRight(4)+"| "; bool any=false;
+        foreach (var kv in counts) { line += kv.Key + " x" + kv.Value + "  "; any=true; }
+        if (!any) line += "-";
+        thr.Add(line);
+    }
+    sections.Add(thr);
+
+    // Cargo containers
+    var cargo = new List<string>();
+    cargo.Add("Cargo containers:");
+    var cMap = new Dictionary<string,int>();
+    for (int i=0;i<cargoContainers.Count;i++){ var c=cargoContainers[i]; string key=ContainerTypeTag(c); if(!cMap.ContainsKey(key)) cMap[key]=0; cMap[key]++; }
+    if (cMap.Count==0) cargo.Add("- none -"); else { foreach (var kv in cMap) cargo.Add("  "+kv.Key+": x"+kv.Value); }
+    sections.Add(cargo);
+
+    // H2 tanks
+    var hsec = new List<string>(); hsec.Add("H2 tanks:");
+    var hMap = new Dictionary<string,int>(); string hLines = GroupGas(gasTanks, true, hMap); foreach (var ln in hLines.Split('\n')) hsec.Add(ln);
+    sections.Add(hsec);
+    // O2 tanks
+    var osec = new List<string>(); osec.Add("O2 tanks:");
+    var oMap = new Dictionary<string,int>(); string oLines = GroupGas(gasTanks, false, oMap); foreach (var ln in oLines.Split('\n')) osec.Add(ln);
+    sections.Add(osec);
+
+    return sections;
+}
 
 // Tiny progress bar + percentage cell for one column
 string Cell(double scenarioMass, double factor, double baseMass, double axisThrust) {

@@ -51,7 +51,7 @@ public void Main(string argument, UpdateType updateSource) {
     double up = 0, down = 0, left = 0, right = 0, forward = 0, backward = 0;
     foreach (var t in thrusters) {
         double thrustKg = t.MaxEffectiveThrust * 0.1019716213;
-        Vector3D thrDir = t.WorldMatrix.Forward;
+        Vector3D thrDir = -t.WorldMatrix.Forward;
         Vector3D local = Vector3D.TransformNormal(thrDir, MatrixD.Transpose(refMatrix));
 
         if (local.Y > 0.9) up += thrustKg;
@@ -86,7 +86,7 @@ public void Main(string argument, UpdateType updateSource) {
     lcd.WriteText("Mass: " + Fm(shipMass) + "\n", true);
     lcd.WriteText("Cargo: " + Fv(usedL) + "/" + Fv(totalL) + " (" + fill.ToString("0.0") + "%)\n\n", true);
 
-    lcd.WriteText("=== Thrust by Side (kgf) ===\n", true);
+    lcd.WriteText("=== Thrust by Side ===\n", true);
     lcd.WriteText("Up:" + Pad(Fm(up),8) + "  Down:" + Fm(down) + "\n", true);
     lcd.WriteText("Fwd:" + Pad(Fm(forward),8) + "  Back:" + Fm(backward) + "\n", true);
     lcd.WriteText("Left:" + Pad(Fm(left),8) + "  Right:" + Fm(right) + "\n", true);

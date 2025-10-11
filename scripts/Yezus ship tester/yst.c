@@ -391,12 +391,30 @@ string GridTag(IMyTerminalBlock b){
 }
 
 string ThrusterSizeTag(IMyThrust t){
-    string sub = t.BlockDefinition.SubtypeName ?? t.DefinitionDisplayNameText ?? "";
-    string l = sub.ToLower();
-    if (l.Contains("large")) return "Big";
-    if (l.Contains("small")) return "Sml";
-    // Fallback by power threshold
-    return t.MaxEffectiveThrust > 1e6 ? "Big" : "Sml";
+    // Robust size detection across vanilla + DLC naming
+    string d = (t.DefinitionDisplayNameText ?? "").ToLower();
+    string s = (t.BlockDefinition.SubtypeName ?? "").ToLower();
+    string ty = ThrusterTypeTag(t);
+
+    // Named patterns in display name take precedence
+    if (d.Contains(" large ") || d.StartsWith("large ")) return "Big";
+    if (d.Contains(" small ") || d.StartsWith("small ")) return "Sml";
+
+    // Industrial smalls typically omit "Large" in display name
+    if (d.Contains("industrial") && !d.Contains(" large ")) return "Sml";
+
+    // Subtype hints (vanilla naming)
+    if (s.Contains("largeblocklarge")) return "Big";
+    if (s.Contains("smallblocksmall")) return "Sml";
+    if (s.Contains("largeblock")) return "Big";
+    if (s.Contains("smallblock")) return "Sml";
+
+    // Fallback by thrust magnitude per type (conservative thresholds for large grid)
+    double n = t.MaxEffectiveThrust; // Newtons
+    if (ty == "Hydro") return n > 1.2e7 ? "Big" : "Sml";   // ~12 MN threshold
+    if (ty == "Ion")  return n > 3.0e6 ? "Big" : "Sml";    // ~3 MN threshold
+    if (ty == "Atmo") return n > 2.0e6 ? "Big" : "Sml";    // ~2 MN threshold
+    return n > 3.0e6 ? "Big" : "Sml";
 }
 
 string ContainerTypeTag(IMyCargoContainer c){
@@ -425,9 +443,10 @@ string GroupGas(List<IMyGasTank> tanks, bool hydrogen, Dictionary<string,int> ou
 List<List<string>> BuildShipSections(MatrixD refMatrix){
     var sections = new List<List<string>>();
 
-    // Thrusters by side
+    // Thrusters by side (compact table, no grid in label)
     var thr = new List<string>();
-    thr.Add("Thrusters by side (type-grid-size):");
+    thr.Add("Thrusters (IS IB HS HB AS AB)");
+    thr.Add("Side | IS IB HS HB AS AB");
     string[] sides = new[]{"Up","Down","Left","Right","Fwd","Back"};
     var sideMap = new Dictionary<string, Dictionary<string,int>>();
     for (int i=0;i<sides.Length;i++) sideMap[sides[i]] = new Dictionary<string,int>();
@@ -439,13 +458,18 @@ List<List<string>> BuildShipSections(MatrixD refMatrix){
         else if (local.Z < -0.9) side="Fwd"; else if (local.Z > 0.9) side="Back";
         else if (local.X > 0.9) side="Right"; else if (local.X < -0.9) side="Left";
         if (side==null) continue;
-        string ty = ThrusterTypeTag(t) + " " + GridTag(t) + " " + ThrusterSizeTag(t);
+        string ty = ThrusterTypeTag(t) + " " + ThrusterSizeTag(t); // no grid in label
         var map = sideMap[side]; if (!map.ContainsKey(ty)) map[ty]=0; map[ty]++;
     }
     for (int i=0;i<sides.Length;i++){
-        var counts = sideMap[sides[i]]; string line = sides[i].PadRight(4)+"| "; bool any=false;
-        foreach (var kv in counts) { line += kv.Key + " x" + kv.Value + "  "; any=true; }
-        if (!any) line += "-";
+        var c = sideMap[sides[i]];
+        int isml = CountOrZero(c, "Ion Sml"), ibig = CountOrZero(c, "Ion Big");
+        int hsml = CountOrZero(c, "Hydro Sml"), hbig = CountOrZero(c, "Hydro Big");
+        int asml = CountOrZero(c, "Atmo Sml"), abig = CountOrZero(c, "Atmo Big");
+        string line = sides[i].PadRight(4) + "| "
+            + isml.ToString().PadLeft(2) + " " + ibig.ToString().PadLeft(2) + " "
+            + hsml.ToString().PadLeft(2) + " " + hbig.ToString().PadLeft(2) + " "
+            + asml.ToString().PadLeft(2) + " " + abig.ToString().PadLeft(2);
         thr.Add(line);
     }
     sections.Add(thr);
@@ -468,6 +492,11 @@ List<List<string>> BuildShipSections(MatrixD refMatrix){
     sections.Add(osec);
 
     return sections;
+}
+
+// Safe lookup for compact table counts
+int CountOrZero(Dictionary<string,int> map, string key){
+    int v; return map != null && map.TryGetValue(key, out v) ? v : 0;
 }
 
 // Tiny progress bar + percentage cell for one column

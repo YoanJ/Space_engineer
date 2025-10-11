@@ -1,4 +1,4 @@
-// === [YST Ship Load Overview v3.7 - Display polish + details] ===
+// === [YST Ship Load Overview v3.8 - Titles, pages, detail nav] ===
 // Works on cockpit screens tagged [YST:index] or panels [YST]
 // Accurate thrust & load ratios, multi-page LCD, 0g compatible
 
@@ -108,6 +108,7 @@ public void Main(string argument, UpdateType updateSource) {
     double upForward=(up*0.707)+(forward*0.707);
 
     // === Pagination + persisted state ===
+    int TOTAL_PAGES = 6; // 1:Overview, 2:Thrust-1g, 3:Empty, 4:Comp, 5:Ore, 6:Ice
     int page = 1;
     string savedDetail = null;
     if (!string.IsNullOrEmpty(Storage)) {
@@ -119,10 +120,9 @@ public void Main(string argument, UpdateType updateSource) {
         }
     }
     string arg = (argument ?? "").Trim().ToLower();
-    if (arg == "next") page = page >= 3 ? 1 : page + 1;
-    else if (arg == "last") page = page <= 1 ? 3 : page - 1;
-    if (page < 1 || page > 3) page = 1;
-    Storage = page.ToString();
+    if (arg == "next") page = page >= TOTAL_PAGES ? 1 : page + 1;
+    else if (arg == "last") page = page <= 1 ? TOTAL_PAGES : page - 1;
+    if (page < 1 || page > TOTAL_PAGES) page = 1;
 
     // Parse detail commands
     string detail = savedDetail;
@@ -130,48 +130,85 @@ public void Main(string argument, UpdateType updateSource) {
     if (arg == "back") detail = null;
 
     // Clear redundant headers; keep things compact
-    WriteLine("Page " + page + "/3");
-    WriteLine("");
 
     if (page == 1) {
-        WriteLine("Overview");
+        Title("Overview", page, TOTAL_PAGES);
         WriteLine("Mass: " + Fm(shipMass));
         Vector3D gVec = ctrl.GetNaturalGravity();
         double g = gVec.Length();
         WriteLine("Gravity: " + g.ToString("0.00") + " m/s^2 (" + (g/9.81).ToString("0.00") + " g)");
         WriteLine("Cargo: " + Fv(usedL) + "/" + Fv(totalL) + " (" + fill.ToString("0.0") + "%)");
         WriteLine("");
-        WriteLine("Thrust by Side (kgf)");
-        WriteLine("Up:" + Pad(Fm(up),8) + "  Down:" + Fm(down));
-        WriteLine("Fwd:" + Pad(Fm(forward),8) + "  Back:" + Fm(backward));
-        WriteLine("Left:" + Pad(Fm(left),8) + "  Right:" + Fm(right));
-        WriteLine("Up+Fw (45 deg): " + Fm(upForward));
         // Persist state
         Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
-        WriteFooter(page);
+        WriteFooter(page, TOTAL_PAGES);
         return;
     }
 
+    // Page 2: Thrust by side - 1g
     if (page == 2) {
+        Title("Thrust by Side - 1g", page, TOTAL_PAGES);
+        WriteLine("kgf totals");
+        WriteLine("Up:" + Pad(Fm(up),8) + "  Down:" + Fm(down));
+        WriteLine("Fwd:" + Pad(Fm(forward),8) + "  Back:" + Fm(backward));
+        WriteLine("Left:" + Pad(Fm(left),8) + "  Right:" + Fm(right));
+        WriteLine("U+F: " + Fm(upForward));
+        WriteLine("");
+        WriteLine("Load Ratio (Empty) @1g");
+        WriteLine("Up: " + Ratio(shipMass, up) + "   Down: " + Ratio(shipMass, down));
+        WriteLine("Left: " + Ratio(shipMass, left) + "   Right: " + Ratio(shipMass, right));
+        WriteLine("Fwd: " + Ratio(shipMass, forward) + "   Back: " + Ratio(shipMass, backward));
+        WriteLine("U+F: " + Ratio(shipMass, upForward));
+        Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
+        WriteFooter(page, TOTAL_PAGES);
+        return;
+    }
+
+    // Page 3: Scenario Empty (no detail, no fill table)
+    if (page == 3) {
+        Title("Scenario", page, TOTAL_PAGES);
+        WriteLine("[Empty]");
+        WriteLine("");
+        // Show progress bars per slice (identical values since scenario mass = 0)
+        WriteLine("Fill / Thrusters   25% | 50%");
+        WriteLine("                   75% | 100%");
+        RenderScenarioRow("Up ", 0.0, shipMass, up);
+        RenderScenarioRow("Fw ", 0.0, shipMass, forward);
+        RenderScenarioRow("U+F", 0.0, shipMass, upForward);
+        Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
+        WriteFooter(page, TOTAL_PAGES);
+        return;
+    }
+
+    // Page 4: Scenario Components
+    if (page == 4) {
         if (detail == "comp" || detail == "empty") {
+            Title("Scenario", page, TOTAL_PAGES);
             RenderDetail(detail == "comp" ? "Components" : "Empty", detail == "comp" ? compMass : 0.0, shipMass, up, forward, upForward);
             WriteLine("");
             WriteLine("< back");
             Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
             return;
         }
-
-        WriteLine("Scenario Components  25% | 50% | 75% | 100%");
+        Title("Scenario", page, TOTAL_PAGES);
+        WriteLine("[Components]");
+        if (arg == "ok") detail = "comp";
+        WriteLine("Fill / Thrusters   25% | 50%");
+        WriteLine("                   75% | 100%");
         RenderScenarioRow("Up ", compMass, shipMass, up);
         RenderScenarioRow("Fw ", compMass, shipMass, forward);
         RenderScenarioRow("U+F", compMass, shipMass, upForward);
         Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
-        WriteFooter(page);
+        WriteFooter(page, TOTAL_PAGES);
         return;
     }
 
-    if (page == 3) {
-        if (detail == "ore" || detail == "ice") {
+    // Page 5: Scenario Ore
+    if (page == 5) {
+        Title("Scenario", page, TOTAL_PAGES);
+        WriteLine("[Ore]");
+        if (arg == "ok") detail = "ore";
+        if (detail == "ore") {
             bool isOre = detail == "ore";
             RenderDetail(isOre ? "Ore" : "Ice", isOre ? oreMass : iceMass, shipMass, up, forward, upForward);
             WriteLine("");
@@ -179,18 +216,35 @@ public void Main(string argument, UpdateType updateSource) {
             Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
             return;
         }
-
-        WriteLine("Scenario Ore   25% | 50% | 75% | 100%");
+        WriteLine("Fill / Thrusters   25% | 50%");
+        WriteLine("                   75% | 100%");
         RenderScenarioRow("Up ", oreMass, shipMass, up);
         RenderScenarioRow("Fw ", oreMass, shipMass, forward);
         RenderScenarioRow("U+F", oreMass, shipMass, upForward);
-        WriteLine("");
-        WriteLine("Scenario Ice   25% | 50% | 75% | 100%");
+        Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
+        WriteFooter(page, TOTAL_PAGES);
+        return;
+    }
+
+    // Page 6: Scenario Ice
+    if (page == 6) {
+        Title("Scenario", page, TOTAL_PAGES);
+        WriteLine("[Ice]");
+        if (arg == "ok") detail = "ice";
+        if (detail == "ice") {
+            RenderDetail("Ice", iceMass, shipMass, up, forward, upForward);
+            WriteLine("");
+            WriteLine("< back");
+            Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
+            return;
+        }
+        WriteLine("Fill / Thrusters   25% | 50%");
+        WriteLine("                   75% | 100%");
         RenderScenarioRow("Up ", iceMass, shipMass, up);
         RenderScenarioRow("Fw ", iceMass, shipMass, forward);
         RenderScenarioRow("U+F", iceMass, shipMass, upForward);
         Storage = "p=" + page.ToString() + ";d=" + (detail ?? "");
-        WriteFooter(page);
+        WriteFooter(page, TOTAL_PAGES);
         return;
     }
 }
@@ -209,11 +263,24 @@ void WriteLine(string text, bool append=true) {
 }
 
 // Footer nav hint
-void WriteFooter(int page) {
+void WriteFooter(int page, int totalPages) {
     WriteLine("");
     if (page <= 1) WriteLine("next >");
-    else if (page >= 3) WriteLine("< last");
+    else if (page >= totalPages) WriteLine("< last");
     else WriteLine("< last        next >");
+}
+
+// Title centered-ish
+void Title(string name, int page, int total) {
+    string t = "=== " + name + " - " + page + " / " + total + " ===";
+    WriteLine(Center(t));
+    WriteLine("");
+}
+
+string Center(string s) {
+    int width = 40; // monospace approximation
+    int pad = Math.Max(0, (width - s.Length) / 2);
+    return new string(' ', pad) + s;
 }
 
 // Tiny progress bar + percentage cell for one column
@@ -223,21 +290,44 @@ string Cell(double scenarioMass, double factor, double baseMass, double axisThru
     return Bar(pct, 6) + " " + pct.ToString("0") + "%";
 }
 
-// Render a single row for Up/Fw/U+F across 25/50/75/100
+// Render a single row for Up/Fw/U+F across 25/50 and 75/100 (two lines)
 void RenderScenarioRow(string label, double scenarioMass, double baseMass, double axisThrust) {
-    WriteLine(label + " | "
-        + Cell(scenarioMass, 0.25, baseMass, axisThrust) + " | "
-        + Cell(scenarioMass, 0.50, baseMass, axisThrust) + " | "
-        + Cell(scenarioMass, 0.75, baseMass, axisThrust) + " | "
-        + Cell(scenarioMass, 1.00, baseMass, axisThrust));
+    string c25 = Cell(scenarioMass, 0.25, baseMass, axisThrust);
+    string c50 = Cell(scenarioMass, 0.50, baseMass, axisThrust);
+    string c75 = Cell(scenarioMass, 0.75, baseMass, axisThrust);
+    string c100 = Cell(scenarioMass, 1.00, baseMass, axisThrust);
+    WriteLine(label + " | " + c25 + " | " + c50);
+    WriteLine("   | " + c75 + " | " + c100);
 }
 
-// Detail view for a scenario (100%)
+// Detail view for a scenario with 25% slices
 void RenderDetail(string title, double scenarioMass, double baseMass, double upT, double fwT, double ufT) {
-    double simMass = baseMass + scenarioMass;
-    WriteLine("Scenario detail: " + title);
-    WriteLine("Simulated weight: " + Fm(simMass));
-    WriteLine("Capacity (1g): Up " + Capacity(simMass, upT) + ", Fw " + Capacity(simMass, fwT) + ", U+F " + Capacity(simMass, ufT));
+    double w25 = baseMass + scenarioMass*0.25;
+    double w50 = baseMass + scenarioMass*0.50;
+    double w75 = baseMass + scenarioMass*0.75;
+    double w100 = baseMass + scenarioMass;
+    WriteLine("Scenario detail:");
+    WriteLine("[" + title + "]");
+    WriteLine("Estimated weight:");
+    WriteLine("  25%:  " + Fm(w25));
+    WriteLine("  50%:  " + Fm(w50));
+    WriteLine("  75%:  " + Fm(w75));
+    WriteLine("  100%: " + Fm(w100));
+    WriteLine("Capacity (1g):");
+    WriteLine("        25%    50%");
+    WriteLine("  Up:  " + Capacity(w25, upT) + " | " + Capacity(w50, upT));
+    WriteLine("        75%    100%");
+    WriteLine("       " + Capacity(w75, upT) + " | " + Capacity(w100, upT));
+    WriteLine("");
+    WriteLine("        25%    50%");
+    WriteLine("  Fw:  " + Capacity(w25, fwT) + " | " + Capacity(w50, fwT));
+    WriteLine("        75%    100%");
+    WriteLine("       " + Capacity(w75, fwT) + " | " + Capacity(w100, fwT));
+    WriteLine("");
+    WriteLine("        25%    50%");
+    WriteLine("  U+F: " + Capacity(w25, ufT) + " | " + Capacity(w50, ufT));
+    WriteLine("        75%    100%");
+    WriteLine("       " + Capacity(w75, ufT) + " | " + Capacity(w100, ufT));
 }
 
 // Percent capacity helper (inverse of Ratio)

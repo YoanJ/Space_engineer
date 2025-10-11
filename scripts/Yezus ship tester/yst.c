@@ -55,7 +55,7 @@ public void Main(string argument, UpdateType updateSource) {
         RefreshBlocks();
         if (surface == null) {
             Echo("No [YST] display found.");
-            return;
+            return; 
         }
     }
 

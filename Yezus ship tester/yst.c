@@ -107,7 +107,10 @@ public void Main(string argument, UpdateType updateSource) {
 
     if (page == 2) {
         lcd.WriteText("=== Load Ratio (Empty) ===\n", true);
-        lcd.WriteText("Up: " + Ratio(shipMass, up) + "   Fw: " + Ratio(shipMass, forward) + "   Up+Fw: " + Ratio(shipMass, upForward) + "\n\n", true);
+        lcd.WriteText("Up: " + Ratio(shipMass, up) + "   Down: " + Ratio(shipMass, down) + "\n", true);
+        lcd.WriteText("Left: " + Ratio(shipMass, left) + "   Right: " + Ratio(shipMass, right) + "\n", true);
+        lcd.WriteText("Fwd: " + Ratio(shipMass, forward) + "   Back: " + Ratio(shipMass, backward) + "\n", true);
+        lcd.WriteText("Up+Fw: " + Ratio(shipMass, upForward) + "\n\n", true);
 
         lcd.WriteText("=== Est. Load Ratios - Components ===\n", true);
         lcd.WriteText("Axis | 25% | 50% | 75% |100%|\n", true);

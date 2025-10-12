@@ -10,6 +10,14 @@ List<IMyGasTank> gasTanks = new List<IMyGasTank>();
 IMyTextSurface surface; // can be cockpit LCD or panel
 IMyTextPanel lcd;
 
+const double EarthGravityWellMeters = 60000.0;   // Approx altitude to exit Earthlike gravity (~60 km)
+const double EarthPlanetRadiusMeters = 60000.0;  // Earthlike planet radius in SE
+const double MoonGravityWellMeters = 22000.0;    // Moon gravity influence tapers out around 22 km
+const double MoonPlanetRadiusMeters = 19000.0;   // Moon radius in SE
+const double HydroConsumptionPerNewtonSecond = 1.0e-3; // Conservative hydro usage per N*s
+const double HydroClimbSpeed = 90.0;             // Typical sustained vertical speed with loaded ships
+const double HydroThrottleBuffer = 1.25;         // Pilot throttle overhead / maneuvering losses
+
 public Program() {
     Runtime.UpdateFrequency = UpdateFrequency.None;
     RefreshBlocks();
@@ -297,8 +305,9 @@ public void Main(string argument, UpdateType updateSource) {
         RenderAxisCapacity("BCK ", backward, w);
         RenderAxisCapacity("U+F ", upForward, w);
         // One-line hydrogen estimate for this slice only
-        double ePct = EstimateHydroPercent(w, refMatrix, 50000.0);
-        double mPct = EstimateHydroPercent(w, refMatrix, 15000.0);
+        double surfaceG = ctrl.GetNaturalGravity().Length();
+        double ePct = EstimateHydroPercent(w, refMatrix, EarthGravityWellMeters, EarthPlanetRadiusMeters, surfaceG);
+        double mPct = EstimateHydroPercent(w, refMatrix, MoonGravityWellMeters, MoonPlanetRadiusMeters, surfaceG);
         WriteLine("");
         WriteLine("Hydro to leave: Earth " + (ePct>=0?ePct.ToString("0.0")+"%":"N/A"));
         WriteLine("Moon " + (mPct>=0?mPct.ToString("0.0")+"%":"N/A"));
@@ -517,27 +526,38 @@ double TotalHydrogenCapacityL(){
 }
 
 // Estimate hydro percent to climb distance at 100 m/s with small buffer
-double EstimateHydroPercent(double massKg, MatrixD refMatrix, double distanceMeters){
-    double hydroCapL = TotalHydrogenCapacityL(); if (hydroCapL <= 0) return -1;
-    // Required hover force (N) at 1g
-    double neededN = massKg * 9.81;
-    // Hydro up thrust available (N)
+double EstimateHydroPercent(double massKg, MatrixD refMatrix, double climbDistanceMeters, double planetRadiusMeters, double surfaceGravity){
+    double hydroCapL = TotalHydrogenCapacityL();
+    if (hydroCapL <= 0 || climbDistanceMeters <= 0 || surfaceGravity <= 0) return -1;
+
     double hydroUpN = 0;
+    MatrixD invRef = MatrixD.Transpose(refMatrix);
     for (int i=0;i<thrusters.Count;i++){
         var t = thrusters[i];
         string name = (t.DefinitionDisplayNameText ?? t.CustomName ?? "").ToLower();
         if (!name.Contains("hydrogen")) continue;
-        Vector3D local = Vector3D.TransformNormal(-t.WorldMatrix.Forward, MatrixD.Transpose(refMatrix));
+        Vector3D local = Vector3D.TransformNormal(-t.WorldMatrix.Forward, invRef);
         if (local.Y > 0.9) hydroUpN += t.MaxEffectiveThrust; // N
     }
     if (hydroUpN <= 0) return -1;
-    double time = (distanceMeters / 100.0) * 1.5; // 100 m/s + 50% buffer (drag/inefficiencies)
-    // Assume hydrogen flow ~ k * thrust(N). More conservative factor (higher consumption)
-    const double kL_per_Ns = 2.5e-4; // liters per N*second (rough, conservative)
-    // At steady 100 m/s, assume thrust ~= weight (no acceleration). Cap at available hydro.
-    double usedN = Math.Min(neededN, hydroUpN);
-    double liters = kL_per_Ns * usedN * time;
-    return Math.Min(999.0, liters / hydroCapL * 100.0);
+
+    double avgGravityFactor = 0.6;
+    if (planetRadiusMeters > 0) {
+        avgGravityFactor = planetRadiusMeters / (planetRadiusMeters + climbDistanceMeters);
+        avgGravityFactor = Math.Max(0.25, Math.Min(1.0, avgGravityFactor));
+    }
+
+    double effectiveWeightN = massKg * surfaceGravity * avgGravityFactor;
+    effectiveWeightN *= HydroThrottleBuffer;
+    if (hydroUpN < effectiveWeightN * 0.9) return -1; // insufficient up thrust to sustain climb
+    double availableN = Math.Min(effectiveWeightN, hydroUpN);
+    if (availableN <= 0) return -1;
+
+    double climbSpeed = Math.Max(30.0, HydroClimbSpeed);
+    double climbTime = (climbDistanceMeters / climbSpeed) * 2.0; // slower climb + maneuver buffer
+    double liters = availableN * climbTime * HydroConsumptionPerNewtonSecond;
+    double pct = (liters / hydroCapL) * 100.0;
+    return Math.Min(999.0, pct);
 }
 
 // Tiny progress bar + percentage cell for one column
@@ -604,3 +624,4 @@ if(kg>1e3)return(kg/1e3).ToString("0.0")+"t";return kg.ToString("0")+"kg";}
 string Fv(double L){if(L>1e6)return(L/1e6).ToString("0.00")+"ML";
 if(L>1e3)return(L/1e3).ToString("0.0")+"kL";return L.ToString("0")+"L";}
 string Pad(string s,int len){while(s.Length<len)s+=" ";return s;}
+ 

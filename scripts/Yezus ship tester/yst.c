@@ -297,8 +297,8 @@ public void Main(string argument, UpdateType updateSource) {
         // One-line hydrogen estimate for this slice only
         double ePct = EstimateHydroPercent(w, refMatrix, 50000.0);
         double mPct = EstimateHydroPercent(w, refMatrix, 15000.0);
-        WriteLine("Hydro to leave: Earth " + (ePct>=0?ePct.ToString("0.0")+"%":"N/A"));
         WriteLine("");
+        WriteLine("Hydro to leave: Earth " + (ePct>=0?ePct.ToString("0.0")+"%":"N/A"));
         WriteLine("Moon " + (mPct>=0?mPct.ToString("0.0")+"%":"N/A"));
         WriteLine("");
         WriteLine((cursor==0?"> ":"  ") + "Next slice");

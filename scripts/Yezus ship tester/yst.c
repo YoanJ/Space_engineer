@@ -77,7 +77,9 @@ public void Main(string argument, UpdateType updateSource) {
 
     IMyShipController ctrl = GetMainController();
     MatrixD refMatrix = ctrl.WorldMatrix;
-    double shipMass = ctrl.CalculateShipMass().PhysicalMass;
+    var sm = ctrl.CalculateShipMass();
+    double shipMass = sm.PhysicalMass;      // includes current inventory
+    double baseEmptyMass = sm.BaseMass;     // empty mass without inventory
 
     // === Directional thrust relative to cockpit ===
     double up=0,down=0,left=0,right=0,forward=0,backward=0;
@@ -225,12 +227,12 @@ public void Main(string argument, UpdateType updateSource) {
     if (mode=="thrust_overview") {
         Title("Thrust overview", 1, 1);
         WriteLine("Empty capacity at 1g:");
-        RenderAxisCapacity("UP  ", up, shipMass);
-        RenderAxisCapacity("DOWN", down, shipMass);
-        RenderAxisCapacity("LEFT", left, shipMass);
-        RenderAxisCapacity("RIGHT", right, shipMass);
-        RenderAxisCapacity("FWD ", forward, shipMass);
-        RenderAxisCapacity("BCK ", backward, shipMass);
+        RenderAxisCapacity("UP  ", up, baseEmptyMass);
+        RenderAxisCapacity("DOWN", down, baseEmptyMass);
+        RenderAxisCapacity("LEFT", left, baseEmptyMass);
+        RenderAxisCapacity("RIGHT", right, baseEmptyMass);
+        RenderAxisCapacity("FWD ", forward, baseEmptyMass);
+        RenderAxisCapacity("BCK ", backward, baseEmptyMass);
         WriteLine("");
         WriteLine((cursor==0?"> ":"  ") + "Details");
         WriteLine((cursor==1?"> ":"  ") + "Back");
@@ -260,9 +262,9 @@ public void Main(string argument, UpdateType updateSource) {
         WriteLine("Fill / Thrusters   25% | 50%");
         WriteLine("                   75% | 100%");
         double sMass = ScenarioMass(scenario, compMass, oreMass, iceMass);
-        RenderScenarioRow("Up ", sMass, shipMass, up);
-        RenderScenarioRow("Fw ", sMass, shipMass, forward);
-        RenderScenarioRow("U+F", sMass, shipMass, upForward);
+        RenderScenarioRow("Up ", sMass, baseEmptyMass, up);
+        RenderScenarioRow("Fw ", sMass, baseEmptyMass, forward);
+        RenderScenarioRow("U+F", sMass, baseEmptyMass, upForward);
         WriteLine("");
         WriteLine((cursor==0?"> ":"  ") + "Next scenario");
         WriteLine((cursor==1?"> ":"  ") + "Details");
@@ -274,7 +276,7 @@ public void Main(string argument, UpdateType updateSource) {
     if (mode=="scenario_detail") {
         Title(CapFirst(scenario)+" details", 1, 1);
         double sMass = ScenarioMass(scenario, compMass, oreMass, iceMass);
-        RenderDetail(CapFirst(scenario), sMass, shipMass, refMatrix);
+        RenderDetail(CapFirst(scenario), sMass, baseEmptyMass, refMatrix);
         WriteLine("");
         WriteLine((cursor==0?"> ":"  ") + "Next slice");
         WriteLine((cursor==1?"> ":"  ") + "Back");
@@ -285,7 +287,7 @@ public void Main(string argument, UpdateType updateSource) {
     if (mode=="scenario_slice") {
         Title(CapFirst(scenario)+" details", 1, 1);
         double sMass = ScenarioMass(scenario, compMass, oreMass, iceMass);
-        double w = shipMass + sMass*(slice/100.0);
+        double w = baseEmptyMass + sMass*(slice/100.0);
         WriteLine("Capacity at 1g - " + slice + "%");
         RenderAxisCapacity("UP  ", up, w);
         RenderAxisCapacity("DOWN", down, w);
@@ -529,9 +531,9 @@ double EstimateHydroPercent(double massKg, MatrixD refMatrix, double distanceMet
         if (local.Y > 0.9) hydroUpN += t.MaxEffectiveThrust; // N
     }
     if (hydroUpN <= 0) return -1;
-    double time = (distanceMeters / 100.0) * 1.2; // 100 m/s + 20% buffer
-    // Assume hydrogen flow ~ k * thrust(N). Calibrated k so a 12 MN hydro burns ~1440 L/s
-    const double kL_per_Ns = 1.2e-4; // liters per N*second (rough)
+    double time = (distanceMeters / 100.0) * 1.5; // 100 m/s + 50% buffer (drag/inefficiencies)
+    // Assume hydrogen flow ~ k * thrust(N). More conservative factor (higher consumption)
+    const double kL_per_Ns = 2.5e-4; // liters per N*second (rough, conservative)
     // At steady 100 m/s, assume thrust ~= weight (no acceleration). Cap at available hydro.
     double usedN = Math.Min(neededN, hydroUpN);
     double liters = kL_per_Ns * usedN * time;

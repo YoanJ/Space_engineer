@@ -263,13 +263,6 @@ public void Main(string argument, UpdateType updateSource) {
         RenderScenarioRow("Up ", sMass, shipMass, up);
         RenderScenarioRow("Fw ", sMass, shipMass, forward);
         RenderScenarioRow("U+F", sMass, shipMass, upForward);
-        // Simple hydro estimation to exit atmosphere
-        double earthPct = EstimateHydroPercent(shipMass + sMass, refMatrix, 50000.0); // ~50 km
-        double moonPct  = EstimateHydroPercent(shipMass + sMass, refMatrix, 15000.0); // ~15 km
-        WriteLine("");
-        WriteLine("Hydro to leave:");
-        WriteLine("  Earth: " + (earthPct>=0? earthPct.ToString("0.0")+"%" : "N/A"));
-        WriteLine("  Moon : " + (moonPct>=0? moonPct.ToString("0.0")+"%" : "N/A"));
         WriteLine("");
         WriteLine((cursor==0?"> ":"  ") + "Next scenario");
         WriteLine((cursor==1?"> ":"  ") + "Details");
@@ -281,7 +274,7 @@ public void Main(string argument, UpdateType updateSource) {
     if (mode=="scenario_detail") {
         Title(CapFirst(scenario)+" details", 1, 1);
         double sMass = ScenarioMass(scenario, compMass, oreMass, iceMass);
-        RenderDetail(CapFirst(scenario), sMass, shipMass, up, forward, upForward);
+        RenderDetail(CapFirst(scenario), sMass, shipMass, refMatrix);
         WriteLine("");
         WriteLine((cursor==0?"> ":"  ") + "Next slice");
         WriteLine((cursor==1?"> ":"  ") + "Back");
@@ -301,6 +294,12 @@ public void Main(string argument, UpdateType updateSource) {
         RenderAxisCapacity("FWD ", forward, w);
         RenderAxisCapacity("BCK ", backward, w);
         RenderAxisCapacity("U+F ", upForward, w);
+        // One-line hydrogen estimate for this slice only
+        double ePct = EstimateHydroPercent(w, refMatrix, 50000.0);
+        double mPct = EstimateHydroPercent(w, refMatrix, 15000.0);
+        WriteLine("");
+        WriteLine("Hydro to leave: Earth " + (ePct>=0?ePct.ToString("0.0")+"%":"N/A"));
+        WriteLine("Moon " + (mPct>=0?mPct.ToString("0.0")+"%":"N/A"));
         WriteLine("");
         WriteLine((cursor==0?"> ":"  ") + "Next slice");
         WriteLine((cursor==1?"> ":"  ") + "Back");
@@ -558,7 +557,7 @@ void RenderScenarioRow(string label, double scenarioMass, double baseMass, doubl
 }
 
 // Detail view for a scenario with 25% slices
-void RenderDetail(string title, double scenarioMass, double baseMass, double upT, double fwT, double ufT) {
+void RenderDetail(string title, double scenarioMass, double baseMass, MatrixD refMatrix) {
     double w25 = baseMass + scenarioMass*0.25;
     double w50 = baseMass + scenarioMass*0.50;
     double w75 = baseMass + scenarioMass*0.75;

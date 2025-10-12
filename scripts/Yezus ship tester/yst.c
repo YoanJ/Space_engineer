@@ -151,6 +151,7 @@ public void Main(string argument, UpdateType updateSource) {
     else if (arg == "back") {
         if (mode=="thrust_overview"||mode=="overview") { mode = "overview"; cursor=0; }
         else if (mode=="thrust_detail") { mode = "thrust_overview"; cursor=0; }
+        else if (mode=="thrust_empty") { mode = "thrust_detail"; cursor=0; }
         else if (mode=="scenario_overview") { mode = "overview"; cursor=0; }
         else if (mode=="scenario_detail") { mode = "scenario_overview"; cursor=0; }
         else if (mode=="scenario_slice") { mode = "scenario_detail"; cursor=0; }
@@ -165,7 +166,10 @@ public void Main(string argument, UpdateType updateSource) {
             if (cursor==0) { mode = "thrust_detail"; cursor=0; }
             else if (cursor==1) { mode = "overview"; cursor=0; }
         } else if (mode=="thrust_detail") {
-            mode = "thrust_overview"; cursor=0;
+            if (cursor==0) { mode = "thrust_empty"; cursor=0; }
+            else if (cursor==1) { mode = "thrust_overview"; cursor=0; }
+        } else if (mode=="thrust_empty") {
+            mode = "thrust_detail"; cursor=0;
         } else if (mode=="scenario_overview") {
             if (cursor==0) {
                 string[] order = new[]{"comp","ore","ice"};
@@ -261,6 +265,28 @@ public void Main(string argument, UpdateType updateSource) {
         WriteLine("RIGHT| " + Fm(right));
         WriteLine("FWD  | " + Fm(forward));
         WriteLine("BCK  | " + Fm(backward));
+        WriteLine("");
+        WriteLine((cursor==0?"> ":"  ") + "Empty hydro slice");
+        WriteLine((cursor==1?"> ":"  ") + "Back");
+        WriteFooterText("up/down, apply");
+        return;
+    }
+
+    if (mode=="thrust_empty") {
+        Title("Thrust empty", 1, 1);
+        WriteLine("Capacity at 1g (empty hull):");
+        RenderAxisCapacity("UP  ", up, baseEmptyMass);
+        RenderAxisCapacity("DOWN", down, baseEmptyMass);
+        RenderAxisCapacity("LEFT", left, baseEmptyMass);
+        RenderAxisCapacity("RIGHT", right, baseEmptyMass);
+        RenderAxisCapacity("FWD ", forward, baseEmptyMass);
+        RenderAxisCapacity("BCK ", backward, baseEmptyMass);
+        RenderAxisCapacity("U+F ", upForward, baseEmptyMass);
+        double eBase = EstimateHydroPercent(baseEmptyMass, refMatrix, EarthGravityWellMeters, EarthPlanetRadiusMeters, EarthSurfaceGravity);
+        double mBase = EstimateHydroPercent(baseEmptyMass, refMatrix, MoonGravityWellMeters, MoonPlanetRadiusMeters, MoonSurfaceGravity);
+        WriteLine("");
+        WriteLine("Hydro to leave: Earth " + (eBase>=0?eBase.ToString("0.0")+"%":"N/A"));
+        WriteLine("Moon " + (mBase>=0?mBase.ToString("0.0")+"%":"N/A"));
         WriteLine("");
         WriteLine((cursor==0?"> ":"  ") + "Back");
         WriteFooterText("apply = back");
@@ -364,7 +390,8 @@ string Center(string s) {
 int MaxCursorMode(string m){
     if (m=="overview") return 2;                // thrust, scenarios, ship overview
     if (m=="thrust_overview") return 1;         // details, back
-    if (m=="thrust_detail") return 0;           // back
+    if (m=="thrust_detail") return 1;           // empty slice, back
+    if (m=="thrust_empty") return 0;            // back
     if (m=="scenario_overview") return 2;       // next, details, back
     if (m=="scenario_detail") return 1;         // next slice, back
     if (m=="scenario_slice") return 1;          // next slice, back

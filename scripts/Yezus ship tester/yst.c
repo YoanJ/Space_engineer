@@ -12,8 +12,10 @@ IMyTextPanel lcd;
 
 const double EarthGravityWellMeters = 60000.0;   // Approx altitude to exit Earthlike gravity (~60 km)
 const double EarthPlanetRadiusMeters = 60000.0;  // Earthlike planet radius in SE
+const double EarthSurfaceGravity = 9.81;         // Earthlike surface gravity in m/s^2
 const double MoonGravityWellMeters = 22000.0;    // Moon gravity influence tapers out around 22 km
 const double MoonPlanetRadiusMeters = 19000.0;   // Moon radius in SE
+const double MoonSurfaceGravity = EarthSurfaceGravity * 0.25; // ~0.25g at moon surface
 const double HydroConsumptionPerNewtonSecond = 1.0e-3; // Conservative hydro usage per N*s
 const double HydroClimbSpeed = 90.0;             // Typical sustained vertical speed with loaded ships
 const double HydroThrottleBuffer = 1.25;         // Pilot throttle overhead / maneuvering losses
@@ -305,9 +307,8 @@ public void Main(string argument, UpdateType updateSource) {
         RenderAxisCapacity("BCK ", backward, w);
         RenderAxisCapacity("U+F ", upForward, w);
         // One-line hydrogen estimate for this slice only
-        double surfaceG = ctrl.GetNaturalGravity().Length();
-        double ePct = EstimateHydroPercent(w, refMatrix, EarthGravityWellMeters, EarthPlanetRadiusMeters, surfaceG);
-        double mPct = EstimateHydroPercent(w, refMatrix, MoonGravityWellMeters, MoonPlanetRadiusMeters, surfaceG);
+        double ePct = EstimateHydroPercent(w, refMatrix, EarthGravityWellMeters, EarthPlanetRadiusMeters, EarthSurfaceGravity);
+        double mPct = EstimateHydroPercent(w, refMatrix, MoonGravityWellMeters, MoonPlanetRadiusMeters, MoonSurfaceGravity);
         WriteLine("");
         WriteLine("Hydro to leave: Earth " + (ePct>=0?ePct.ToString("0.0")+"%":"N/A"));
         WriteLine("Moon " + (mPct>=0?mPct.ToString("0.0")+"%":"N/A"));
@@ -547,15 +548,15 @@ double EstimateHydroPercent(double massKg, MatrixD refMatrix, double climbDistan
         avgGravityFactor = Math.Max(0.25, Math.Min(1.0, avgGravityFactor));
     }
 
-    double effectiveWeightN = massKg * surfaceGravity * avgGravityFactor;
-    effectiveWeightN *= HydroThrottleBuffer;
-    if (hydroUpN < effectiveWeightN * 0.9) return -1; // insufficient up thrust to sustain climb
-    double availableN = Math.Min(effectiveWeightN, hydroUpN);
+    double hoverWeightN = massKg * surfaceGravity * avgGravityFactor;
+    double targetN = hoverWeightN * HydroThrottleBuffer;
+    double availableN = Math.Min(targetN, hydroUpN);
     if (availableN <= 0) return -1;
+    double appliedN = Math.Max(hoverWeightN, availableN); // ensure we budget for required hover force
 
     double climbSpeed = Math.Max(30.0, HydroClimbSpeed);
     double climbTime = (climbDistanceMeters / climbSpeed) * 2.0; // slower climb + maneuver buffer
-    double liters = availableN * climbTime * HydroConsumptionPerNewtonSecond;
+    double liters = appliedN * climbTime * HydroConsumptionPerNewtonSecond;
     double pct = (liters / hydroCapL) * 100.0;
     return Math.Min(999.0, pct);
 }

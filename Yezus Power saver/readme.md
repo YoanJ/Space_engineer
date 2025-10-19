@@ -31,24 +31,23 @@ Definir des paliers de consommation de courant et couper de maniere progressive 
 ## Detection automatique des paliers
 Les blocs sont classes automatiquement sans groupe predefini. Le script s'appuie sur des whitelist de sous-types `MyDefinitionId` pour chaque interface (IMyMedicalRoom, IMyThrust, IMyAssembler, etc.) et couvre les variantes Vanilla et DLC (Economy, Sparks of the Future, Frostbite, Wasteland, Decorative 1&2, Heavy Industry, Warfare 1&2, Automatons). Chaque categorie ci-dessous est eevaluee sur grilles small et large.
 
-### Deep Sleep - respawn uniquement
+### Deep Sleep - respawn uniquement - 10% to 0%
 - Respawn (IMyMedicalRoom, IMyCryoChamber, IMySurvivalKit): Medical Room, Cryo Chamber, Survival Kit.
 - Support vital minimum (IMyGasGenerator): O2/H2 Generator exclusivement pour alimenter le bloc de respawn.
 - Energie critique (IMyBatteryBlock, IMyReactor): Battery Block (mode recharge auto), Small Reactor, Hydrogen Engine au ralenti.
-- Atmosphere immediate (IMyAirVent): Air Vent pour pressuriser la zone du respawn si necessaire.
 - Distribution directe (IMyConveyorTube): Conveyor Frames/Tubes reliant le point de respawn aux reserves d'H2/O2.
 - Controle passif (IMyProgrammableBlock): Programmable Block hote du script pour que le systeme reste operationnel.
-
-### Sleep - maintien vital
 - Gaz & atmosphere (IMyGasTank, IMyOxygenTank, IMyOxygenFarm): Hydrogen Tank (standard, Industrial), Oxygen Tank (standard, Industrial), Oxygen Farm.
-- Energie de base (IMyBatteryBlock, IMyReactor, IMyPowerProducer): Battery Block, Small Reactor, Hydrogen Engine en regime veille.
-- Controle & scripts (IMyProgrammableBlock, IMyTimerBlock, IMySensorBlock, IMyCameraBlock, IMyShipController, IMyEventController): Programmable Block secondaires, Timer Block, Sensor, Camera, Cockpit, Flight Seat, Remote Control, Control Seat, Industrial Cockpit, Bridge Cockpit (Warfare), Event Controller.
 - Ancrage & dock (IMyShipConnector, IMyShipMergeBlock, IMyLandingGear, IMyMechanicalConnectionBlock): Connector (standard, small, warfare), Merge Block, Landing Gear (standard, Wasteland), Magnetic Plate, Grapple Block (Automatons).
+
+### Sleep - maintien vital - 25-50
+- Controle & scripts (IMyProgrammableBlock, IMyTimerBlock, IMySensorBlock, IMyCameraBlock, IMyShipController, IMyEventController): Programmable Block secondaires, Timer Block, Sensor, Camera, Cockpit, Flight Seat, Remote Control, Control Seat, Industrial Cockpit, Bridge Cockpit (Warfare), Event Controller.
 - Logistique passive (IMyConveyorTube, IMyCargoContainer, IMyConveyorSorter, IMyCollector, IMyShipConnector): Conveyor Tubes, Conveyor Frames, Conveyor Junction, Cargo Container (standard, Industrial), Conveyor Sorter en veille, Collector, Ejector.
 - Communication & balises (IMyRadioAntenna, IMyLaserAntenna, IMyBeacon, IMyOreDetector, IMyStoreBlock, IMyContractBlock): Radio Antenna, Laser Antenna, Beacon, Ore Detector, Store Block, Contract Block, Vending Machine.
 - Securite interne (IMyAirVent, IMyDoor, IMyAirtightHangarDoor, IMyGravityGenerator): Air Vent, Airtight Doors (Sliding, Offset, Blast), Airtight Hangar Door, Gravity Generator, Spherical Gravity Generator.
+- Atmosphere immediate (IMyAirVent): Air Vent pour pressuriser la zone du respawn si necessaire.
 
-### Vital - manoeuvre et defense
+### Vital - manoeuvre et defense 50-75
 - Propulsion & stabilisation (IMyThrust, IMyGyro, IMyMotorSuspension): Atmospheric Thruster (vanilla, Wasteland, Sparks), Ion Thruster (vanilla, Warfare), Hydrogen Thruster (vanilla, Warfare), Gyroscope, AI Flight Block (Automatons), Wheel Suspension 1x1/3x3/5x5 (vanilla, Wasteland).
 - Energie active (IMyReactor, IMyPowerProducer, IMyBatteryBlock, IMyJumpDrive): Large Reactor, Hydrogen Engine, Wind Turbine, Solar Panel, Battery (mode Auto), Jump Drive.
 - Defenses & contre-mesures (IMyLargeTurretBase, IMySmallGatlingGun, IMyUserControllableGun, IMySafeZoneBlock, IMyDecoy): Interior Turret, Gatling Turret, Missile Turret, Artillery Turret, Assault Cannon Turret, Autocannon Turret, Railgun, Sentry Gun (Warfare 2), Warfare Gatling Gun, Warfare Autocannon, Warfare Missile Launcher, Artillery Cannon, Assault Cannon, Railgun (statique), Tesla Coil (Automatons), Safe Zone Controller, Decoy.
@@ -56,7 +55,7 @@ Les blocs sont classes automatiquement sans groupe predefini. Le script s'appuie
 - Maintenance & travaux (IMyShipDrill, IMyShipGrinder, IMyShipWelder, IMyPistonBase, IMyMotorBase, IMyHingeBase, IMyMechanicalConnectionBlock): Drill (standard, Warfare), Grinder (standard, Warfare), Welder (standard, Warfare), Pistons, Rotors, Advanced Rotors, Hinges, Mechanical Joint Block (Automatons).
 - IA & automation (Automatons): AI Basic Interface, AI Task Interface, AI Offensive Interface, AI Defensive Interface, AI Recorder.
 
-### Production - pleine capacite
+### Production - pleine capacite 75-100
 - Industrialisation (IMyAssembler, IMyRefinery, IMySurvivalKit, IMyGasGenerator): Assembler, Basic Assembler, Industrial Assembler, Refinery, Basic Refinery, Industrial Refinery, Survival Kit (mode production), O2/H2 Generator (mode production continu).
 - Modules (IMyProductionModule): Yield Module, Productivity Module, Power Efficiency Module, Speed Module.
 - Traitement ressources & energie (IMyGasTank, IMyPowerProducer, IMyFunctionalBlock): Hydrogen Engine en banc, Hydrogen Tank (Industrial), Hydroponic Module (Frostbite).

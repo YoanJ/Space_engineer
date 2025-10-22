@@ -237,7 +237,8 @@ string FormatAmount(double value) {
 }
 
 bool HasTag(string name) {
-    return TryGetTagIndex(name, out _);
+    int dummy;
+    return TryGetTagIndex(name, out dummy);
 }
 
 bool TryGetTagIndex(string name, out int index) {

@@ -8,5 +8,5 @@ MVP scope:
 
 Setup:
 1. Rename the programmable block to include `[YSI]` for consistency (optional but helps filtering).
-2. Add `[YSI]` to one LCD panel or cockpit; that surface becomes the display for the MVP.
+2. Add `[YSI]` or `[YSI:surfaceIndex]` to one LCD panel or cockpit (the index selects which cockpit screen to use, default is 0).
 3. Load `script.c` into the programmable block and run once; use the `refresh` argument after renaming blocks.

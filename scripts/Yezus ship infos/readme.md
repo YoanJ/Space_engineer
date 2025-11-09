@@ -1,10 +1,15 @@
-Displays a quick summary of the ship consumables on a tagged LCD or cockpit screen.
+Displays a quick summary of ship consumables on a tagged LCD or cockpit screen, with per-tag breakdowns.
 
-MVP scope:
-- Track Hydrogen, Oxygen and Battery charge across the whole grid
-- Show percentage, ASCII progress bar and current/max quantity in appropriate units
-- Require a dedicated tag (`[YSI]`) only on the target display surface; resource blocks are auto-discovered
-- Use the first tagged LCD (or cockpit surface index 0 if available); future updates can fan out to multiple screens
+Scope:
+- Track Hydrogen, Oxygen, Battery charge and total Cargo volume across the whole construct
+- Show percent, ASCII progress bar and current/max quantity in appropriate units
+- Aggregate stats for every `[TAG]` prefix found in the tracked blocks' custom names (only the part before `:` is used)
+- A dedicated tag (`[YSI]` or `[YSI:index]`) is required only on the display surface; the script discovers resource blocks automatically
+
+Navigation (`Run` arguments):
+- `UP` / `DOWN`: move the cursor through the menu
+- `APPLY`: activate the highlighted action (cycle tags, go back, return to main view)
+- `refresh`: rescan blocks after renaming or adding hardware
 
 Setup:
 1. Rename the programmable block to include `[YSI]` for consistency (optional but helps filtering).

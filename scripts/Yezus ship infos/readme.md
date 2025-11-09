@@ -3,6 +3,8 @@ Displays a quick summary of ship consumables on a tagged LCD or cockpit screen, 
 Scope:
 - Track Hydrogen, Oxygen, Battery charge and total Cargo volume across the whole construct
 - Show percent, ASCII progress bar and current/max quantity in appropriate units
+- Display net Hydrogen/Oxygen flow (L/s) and real-time electrical production (MW) aggregated per tag or for the whole grid
+- Production lines scale units automatically (L/kL/ML for gases, W/kW/MW/GW for power) and show the current rate alongside the peak rate observed (for gases) or generator capacity (for power)
 - Aggregate stats for every `[TAG]` prefix found in the tracked blocks' custom names (only the part before `:` is used)
 - A dedicated tag (`[YSI]` or `[YSI:index]`) is required only on the display surface; the script discovers resource blocks automatically
 

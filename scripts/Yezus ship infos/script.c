@@ -5,6 +5,7 @@ const string TAG_LABEL = "[YSI]";
 const string TAG_PREFIX = "[YSI";
 const int DEFAULT_SURFACE_INDEX = 0;
 const double REFRESH_SECONDS = 5;
+const string TOTAL_KEY = "__TOTAL__";
 
 IMyTextSurface displaySurface;
 IMyTerminalBlock displayBlock;
@@ -14,14 +15,27 @@ List<IMyGasTank> hydrogenTanks = new List<IMyGasTank>();
 List<IMyGasTank> oxygenTanks = new List<IMyGasTank>();
 List<IMyBatteryBlock> batteries = new List<IMyBatteryBlock>();
 List<IMyCargoContainer> cargoContainers = new List<IMyCargoContainer>();
+List<IMyPowerProducer> powerProducers = new List<IMyPowerProducer>();
 List<IMyTerminalBlock> displayCandidates = new List<IMyTerminalBlock>();
 
 List<string> scratchTags = new List<string>();
 List<string> menuOptions = new List<string>();
+List<string> removalBuffer = new List<string>();
 
 Dictionary<string, ResourceGroup> tagGroups = new Dictionary<string, ResourceGroup>(StringComparer.OrdinalIgnoreCase);
 List<string> tagList = new List<string>();
 ResourceGroup totalGroup = new ResourceGroup();
+
+Dictionary<string, double> lastHydrogenAmount = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+Dictionary<string, double> lastOxygenAmount = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+Dictionary<string, double> hydrogenRateByKey = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+Dictionary<string, double> oxygenRateByKey = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+Dictionary<string, double> powerOutputByTag = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+Dictionary<string, double> hydrogenPeakRate = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+Dictionary<string, double> oxygenPeakRate = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+Dictionary<string, double> powerCapacityByTag = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+double totalPowerOutput = 0;
+double totalPowerCapacity = 0;
 
 ViewMode currentView = ViewMode.All;
 string currentTagKey = null;
@@ -133,8 +147,9 @@ public void Main(string argument, UpdateType updateSource) {
     secondsSinceLast += Runtime.TimeSinceLastRun.TotalSeconds;
     if (secondsSinceLast < REFRESH_SECONDS) return;
 
+    double elapsed = secondsSinceLast;
     secondsSinceLast = 0;
-    WriteStatus();
+    WriteStatus(elapsed);
 }
 
 void RefreshBlocks() {
@@ -142,6 +157,7 @@ void RefreshBlocks() {
     oxygenTanks.Clear();
     batteries.Clear();
     cargoContainers.Clear();
+    powerProducers.Clear();
 
     GridTerminalSystem.GetBlocksOfType(hydrogenTanks, t =>
         t.IsSameConstructAs(Me) && IsTankType(t, "Hydrogen"));
@@ -154,6 +170,9 @@ void RefreshBlocks() {
 
     GridTerminalSystem.GetBlocksOfType(cargoContainers, c =>
         c.IsSameConstructAs(Me));
+
+    GridTerminalSystem.GetBlocksOfType(powerProducers, p =>
+        p.IsSameConstructAs(Me));
 
     displaySurface = null;
     displayBlock = null;
@@ -218,16 +237,18 @@ float GetAdaptiveFontSize(IMyTerminalBlock block, IMyTextSurface surface) {
     return (float)font;
 }
 
-void WriteStatus() {
+void WriteStatus(double elapsedSeconds = 0) {
     if (!EnsureDisplay()) {
         Echo("No tagged display surface found. Add " + TAG_LABEL + "[:index] to an LCD or cockpit.");
         return;
     }
 
     RebuildResourceGroups();
+    UpdateProductionRates(elapsedSeconds);
 
     ResourceGroup activeGroup = totalGroup;
     string header = "ALL";
+    string activeKey = TOTAL_KEY;
 
     if (currentView == ViewMode.Tag && currentTagIndex >= 0 && currentTagIndex < tagList.Count) {
         string key = tagList[currentTagIndex];
@@ -236,17 +257,21 @@ void WriteStatus() {
             activeGroup = taggedGroup;
             header = "GRID [" + key + "]";
             currentTagKey = key;
+            activeKey = key;
         } else {
             currentView = ViewMode.All;
             header = "ALL";
             currentTagKey = null;
+            activeKey = TOTAL_KEY;
         }
     } else if (currentView == ViewMode.Tag) {
         currentView = ViewMode.All;
         header = "ALL";
         currentTagKey = null;
+        activeKey = TOTAL_KEY;
     } else {
         currentTagKey = null;
+        activeKey = TOTAL_KEY;
     }
 
     ResourceStats hydrogen = activeGroup.Hydrogen.ToStats();
@@ -254,16 +279,22 @@ void WriteStatus() {
     ResourceStats power = activeGroup.Batteries.ToStats();
     ResourceStats cargo = activeGroup.Cargo.ToStats();
 
+    double hRate = GetRateForKey(hydrogenRateByKey, activeKey);
+    double oRate = GetRateForKey(oxygenRateByKey, activeKey);
+    double powerOutput = GetPowerOutputForKey(activeKey);
+    double hMaxRate = GetPeakRate(hydrogenPeakRate, activeKey);
+    double oMaxRate = GetPeakRate(oxygenPeakRate, activeKey);
+    double powerMax = GetPowerCapacityForKey(activeKey);
+
     System.Text.StringBuilder sb = new System.Text.StringBuilder();
     sb.AppendLine(header);
-    sb.AppendLine("----");
-    sb.AppendLine("INFOS");
-    sb.AppendLine("----");
+    sb.AppendLine("================");
+    sb.AppendLine();
 
-    AppendSection(sb, "Hydrogen", hydrogen, "L");
-    AppendSection(sb, "Oxygen", oxygen, "L");
-    AppendSection(sb, "Batteries", power, "MWh");
-    AppendSection(sb, "Cargo", cargo, "L");
+    AppendResourceEntry(sb, "Hydrogen", hydrogen, "L", true, hRate, hMaxRate, true);
+    AppendResourceEntry(sb, "Oxygen", oxygen, "L", true, oRate, oMaxRate, true);
+    AppendResourceEntry(sb, "Batteries", power, "MWh", true, powerOutput * 1000000.0, powerMax * 1000000.0, false);
+    AppendResourceEntry(sb, "Cargo", cargo, "L", false, 0, 0, true);
 
     List<string> options = BuildMenuOptions();
     if (options.Count > 0) {
@@ -283,7 +314,8 @@ bool EnsureDisplay() {
     return displaySurface != null;
 }
 
-void AppendSection(System.Text.StringBuilder sb, string label, ResourceStats stats, string unit) {
+void AppendResourceEntry(System.Text.StringBuilder sb, string label, ResourceStats stats, string unit,
+    bool hasRate, double rateValue, double maxRateValue, bool rateIsVolume) {
     sb.AppendLine(label);
 
     if (stats.Blocks == 0) {
@@ -293,8 +325,18 @@ void AppendSection(System.Text.StringBuilder sb, string label, ResourceStats sta
     }
 
     sb.AppendFormat("  {0,5:0.0}% {1}\n", stats.Fill * 100, BuildBar(stats.Fill, 24));
-    sb.AppendFormat("  {0} / {1} {2}\n", FormatAmount(stats.Current), FormatAmount(stats.Capacity), unit);
-    sb.AppendFormat("  {0} blocks\n\n", stats.Blocks);
+    sb.Append("  Storage ")
+        .Append(FormatValueWithUnit(stats.Current, unit))
+        .Append(" / ")
+        .Append(FormatValueWithUnit(stats.Capacity, unit));
+
+    if (hasRate) {
+        sb.Append(" | Prod ")
+            .Append(FormatRateLine(rateValue, maxRateValue, rateIsVolume));
+    }
+
+    sb.AppendLine();
+    sb.AppendLine();
 }
 
 void RebuildResourceGroups() {
@@ -331,7 +373,11 @@ void RebuildResourceGroups() {
         ProcessResource(current, capacity, ResourceKind.Cargo, container.CustomName);
     }
 
+    UpdatePowerOutputs();
+
     tagList.Sort(StringComparer.OrdinalIgnoreCase);
+
+    PruneProductionDictionaries();
 
     if (tagList.Count == 0) {
         currentTagIndex = -1;
@@ -355,6 +401,55 @@ void RebuildResourceGroups() {
 void ProcessResource(double current, double capacity, ResourceKind kind, string customName) {
     AddToAccumulator(totalGroup, kind, current, capacity);
     AddToTagGroups(customName, kind, current, capacity);
+}
+
+void UpdatePowerOutputs() {
+    totalPowerOutput = 0;
+    totalPowerCapacity = 0;
+    powerOutputByTag.Clear();
+    powerCapacityByTag.Clear();
+
+    for (int i = 0; i < powerProducers.Count; i++) {
+        IMyPowerProducer producer = powerProducers[i];
+        double output = producer.CurrentOutput;
+        double capacity = producer.MaxOutput;
+        totalPowerOutput += output;
+        totalPowerCapacity += capacity;
+        AddPowerToTag(producer.CustomName, output);
+        AddPowerCapacityToTag(producer.CustomName, capacity);
+    }
+}
+
+void AddPowerToTag(string customName, double output) {
+    int tagCount = ExtractTags(customName);
+    if (tagCount == 0) return;
+
+    for (int i = 0; i < tagCount; i++) {
+        string tag = scratchTags[i];
+        GetOrCreateGroup(tag);
+
+        double existing;
+        if (!powerOutputByTag.TryGetValue(tag, out existing)) {
+            existing = 0;
+        }
+        powerOutputByTag[tag] = existing + output;
+    }
+}
+
+void AddPowerCapacityToTag(string customName, double capacity) {
+    int tagCount = ExtractTags(customName);
+    if (tagCount == 0) return;
+
+    for (int i = 0; i < tagCount; i++) {
+        string tag = scratchTags[i];
+        GetOrCreateGroup(tag);
+
+        double existing;
+        if (!powerCapacityByTag.TryGetValue(tag, out existing)) {
+            existing = 0;
+        }
+        powerCapacityByTag[tag] = existing + capacity;
+    }
 }
 
 void AddToAccumulator(ResourceGroup group, ResourceKind kind, double current, double capacity) {
@@ -394,6 +489,73 @@ ResourceGroup GetOrCreateGroup(string tag) {
         tagList.Add(tag);
     }
     return group;
+}
+
+void UpdateProductionRates(double elapsedSeconds) {
+    if (elapsedSeconds <= 0) return;
+
+    UpdateProductionForKey(TOTAL_KEY, totalGroup, elapsedSeconds);
+    for (int i = 0; i < tagList.Count; i++) {
+        string tag = tagList[i];
+        ResourceGroup group;
+        if (tagGroups.TryGetValue(tag, out group)) {
+            UpdateProductionForKey(tag, group, elapsedSeconds);
+        }
+    }
+}
+
+void UpdateProductionForKey(string key, ResourceGroup group, double elapsedSeconds) {
+    double hRate = UpdateSingleRate(lastHydrogenAmount, hydrogenRateByKey, key, group.Hydrogen.Current, elapsedSeconds);
+    double oRate = UpdateSingleRate(lastOxygenAmount, oxygenRateByKey, key, group.Oxygen.Current, elapsedSeconds);
+    TrackPeakRate(hydrogenPeakRate, key, hRate);
+    TrackPeakRate(oxygenPeakRate, key, oRate);
+}
+
+double UpdateSingleRate(Dictionary<string, double> lastMap, Dictionary<string, double> rateMap,
+    string key, double currentValue, double elapsedSeconds) {
+    double previous;
+    if (!lastMap.TryGetValue(key, out previous)) {
+        lastMap[key] = currentValue;
+        rateMap[key] = 0;
+        return 0;
+    }
+
+    double rate = (currentValue - previous) / elapsedSeconds;
+    lastMap[key] = currentValue;
+    rateMap[key] = rate;
+    return rate;
+}
+
+void TrackPeakRate(Dictionary<string, double> peakMap, string key, double rate) {
+    double abs = Math.Abs(rate);
+    double current;
+    if (!peakMap.TryGetValue(key, out current) || abs > current) {
+        peakMap[key] = abs;
+    }
+}
+
+void PruneProductionDictionaries() {
+    RemoveMissingKeys(lastHydrogenAmount);
+    RemoveMissingKeys(lastOxygenAmount);
+    RemoveMissingKeys(hydrogenRateByKey);
+    RemoveMissingKeys(oxygenRateByKey);
+    RemoveMissingKeys(hydrogenPeakRate);
+    RemoveMissingKeys(oxygenPeakRate);
+}
+
+void RemoveMissingKeys(Dictionary<string, double> map) {
+    removalBuffer.Clear();
+    foreach (var kvp in map) {
+        string key = kvp.Key;
+        if (string.Equals(key, TOTAL_KEY, StringComparison.OrdinalIgnoreCase)) continue;
+        if (!tagGroups.ContainsKey(key)) {
+            removalBuffer.Add(key);
+        }
+    }
+
+    for (int i = 0; i < removalBuffer.Count; i++) {
+        map.Remove(removalBuffer[i]);
+    }
 }
 
 int ExtractTags(string name) {
@@ -537,6 +699,122 @@ string FormatAmount(double value) {
 
     string format = abs >= 100 ? "0" : "0.0";
     return value.ToString(format) + suffix;
+}
+
+string FormatValueWithUnit(double value, string unit) {
+    switch (unit) {
+        case "L":
+            return FormatVolume(value);
+        case "MWh":
+            return FormatEnergy(value);
+        default:
+            return FormatAmount(value) + " " + unit;
+    }
+}
+
+string FormatVolume(double liters) {
+    double abs = Math.Abs(liters);
+    string unit = "L";
+    double value = liters;
+
+    if (abs >= 1000000) {
+        unit = "ML";
+        value = liters / 1000000.0;
+    } else if (abs >= 1000) {
+        unit = "kL";
+        value = liters / 1000.0;
+    }
+
+    return FormatNumber(value) + " " + unit;
+}
+
+string FormatEnergy(double val) {
+    return FormatNumber(val) + " MWh";
+}
+
+string FormatPowerValue(double watts) {
+    double abs = Math.Abs(watts);
+    string unit = "W";
+    double value = watts;
+
+    if (abs >= 1000000000) {
+        unit = "GW";
+        value = watts / 1000000000.0;
+    } else if (abs >= 1000000) {
+        unit = "MW";
+        value = watts / 1000000.0;
+    } else if (abs >= 1000) {
+        unit = "kW";
+        value = watts / 1000.0;
+    }
+
+    return FormatNumber(value) + " " + unit;
+}
+
+string FormatNumber(double value) {
+    double abs = Math.Abs(value);
+    string format = abs >= 100 ? "0" : "0.0";
+    return value.ToString(format);
+}
+
+string FormatFlow(double rate) {
+    string sign = rate >= 0 ? "+" : "-";
+    return sign + FormatVolume(Math.Abs(rate)) + "/s";
+}
+
+string FormatPowerFlow(double watts) {
+    string sign = watts >= 0 ? "+" : "-";
+    return sign + FormatPowerValue(Math.Abs(watts));
+}
+
+string FormatRateLine(double value, double max, bool isVolumeRate) {
+    string rateText = isVolumeRate ? FormatFlow(value) : FormatPowerFlow(value);
+    double absValue = Math.Abs(value);
+    double absMax = Math.Abs(max);
+    string percent = absMax > 0 ? (absValue / absMax * 100.0).ToString("0.0") + "%" : "--";
+
+    if (absMax > 0) {
+        string maxText = isVolumeRate ? FormatVolume(absMax) + "/s" : FormatPowerValue(absMax);
+        return rateText + " (" + percent + " of " + maxText + ")";
+    }
+
+    return rateText + " (" + percent + ")";
+}
+
+double GetRateForKey(Dictionary<string, double> map, string key) {
+    double value;
+    if (map.TryGetValue(key, out value)) return value;
+    return 0;
+}
+
+double GetPeakRate(Dictionary<string, double> map, string key) {
+    double value;
+    if (map.TryGetValue(key, out value)) return value;
+    return 0;
+}
+
+double GetPowerOutputForKey(string key) {
+    if (string.Equals(key, TOTAL_KEY, StringComparison.OrdinalIgnoreCase)) {
+        return totalPowerOutput;
+    }
+
+    double value;
+    if (powerOutputByTag.TryGetValue(key, out value)) {
+        return value;
+    }
+    return 0;
+}
+
+double GetPowerCapacityForKey(string key) {
+    if (string.Equals(key, TOTAL_KEY, StringComparison.OrdinalIgnoreCase)) {
+        return totalPowerCapacity;
+    }
+
+    double value;
+    if (powerCapacityByTag.TryGetValue(key, out value)) {
+        return value;
+    }
+    return 0;
 }
 
 bool HasTag(string name) {
